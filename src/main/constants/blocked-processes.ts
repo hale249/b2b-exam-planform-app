@@ -1,6 +1,12 @@
 import type { BlockedProcess } from '../types'
 
 export const BLOCKED_PROCESSES: BlockedProcess[] = [
+  // macOS native screen recording
+  {
+    name: 'Screen Recording',
+    patterns: ['screencapture', 'ReplayKit', 'ScreenRecording']
+  },
+
   // Screen recording
   { name: 'OBS Studio', patterns: ['obs64', 'obs32', 'obs-browser-page'] },
   { name: 'Bandicam', patterns: ['bdcam', 'bandicam'] },
