@@ -209,8 +209,12 @@ const registerBlockedShortcuts = (): void => {
   let confirmCounter = 0
   let isConfirmShowing = false
 
+  let escCooldownUntil = 0
+
   ipcMain.on('confirm-response', (_event, { id, confirmed }: { id: string; confirmed: boolean }) => {
     isConfirmShowing = false
+    // Cooldown to prevent Esc from immediately reopening confirm
+    escCooldownUntil = Date.now() + 500
     // Handle quit confirm
     if (id === pendingQuitConfirmId) {
       pendingQuitConfirmId = null
@@ -293,8 +297,14 @@ const registerBlockedShortcuts = (): void => {
     })
   })
   // Esc in fullscreen → confirm → exit fullscreen + reload (auto redirects to dashboard)
-  mainWindow?.webContents.on('before-input-event', (_event, input) => {
-    if (input.key === 'Escape' && input.type === 'keyDown' && mainWindow?.isKiosk() && !isConfirmShowing) {
+  mainWindow?.webContents.on('before-input-event', (event, input) => {
+    // Block Esc from reaching renderer when confirm is showing
+    if (input.key === 'Escape' && input.type === 'keyDown' && isConfirmShowing) {
+      event.preventDefault()
+      return
+    }
+    if (input.key === 'Escape' && input.type === 'keyDown' && mainWindow?.isKiosk() && !isConfirmShowing && Date.now() > escCooldownUntil) {
+      event.preventDefault()
       showConfirm({
         icon: '',
         iconColor: '',

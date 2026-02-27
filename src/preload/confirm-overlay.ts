@@ -198,20 +198,23 @@ function showConfirm(options: ConfirmOptions): void {
   cancelAction = cancel
 
   if (activeKeydownHandler) {
-    document.removeEventListener('keydown', activeKeydownHandler)
+    document.removeEventListener('keydown', activeKeydownHandler, true)
   }
-  activeKeydownHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation()
-      e.preventDefault()
-      cancel()
-    } else if (e.key === 'Enter') {
-      e.stopPropagation()
-      e.preventDefault()
-      confirm()
+  // Delay registering keydown to avoid catching the same Esc that opened the confirm
+  setTimeout(() => {
+    activeKeydownHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        e.preventDefault()
+        cancel()
+      } else if (e.key === 'Enter') {
+        e.stopPropagation()
+        e.preventDefault()
+        confirm()
+      }
     }
-  }
-  document.addEventListener('keydown', activeKeydownHandler, true)
+    document.addEventListener('keydown', activeKeydownHandler, true)
+  }, 200)
 }
 
 ipcRenderer.on('show-confirm', (_event, options: ConfirmOptions) => {

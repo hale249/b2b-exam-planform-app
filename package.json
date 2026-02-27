@@ -5,12 +5,12 @@
   "main": "./dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "rm -rf dist dist-electron && vite build",
     "start": "electron .",
-    "build:unpack": "vite build && electron-builder --dir",
-    "build:win": "vite build && electron-builder --win",
-    "build:mac": "vite build && electron-builder --mac",
-    "build:linux": "vite build && electron-builder --linux"
+    "build:unpack": "rm -rf dist dist-electron && vite build && electron-builder --dir",
+    "build:win": "rm -rf dist dist-electron && vite build && electron-builder --win",
+    "build:mac": "rm -rf dist dist-electron && vite build && electron-builder --mac",
+    "build:linux": "rm -rf dist dist-electron && vite build && electron-builder --linux"
   },
   "dependencies": {
     "vue": "^3.5.29"

@@ -29,7 +29,7 @@ export const startProcessMonitor = (mainWindow: BrowserWindow): void => {
     }
     const blocked = await checkBlockedProcesses()
     safeSend(mainWindow, blocked)
-  }, 5_000)
+  }, 30_000)
 }
 
 export const stopProcessMonitor = (): void => {
