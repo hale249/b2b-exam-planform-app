@@ -20,6 +20,7 @@ const createWindow = (): void => {
     show: false,
     autoHideMenuBar: true,
     kiosk: false,
+    backgroundColor: '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -76,7 +77,8 @@ const createWindow = (): void => {
 
   mainWindow.setContentProtection(true)
 
-  mainWindow.once('ready-to-show', () => {
+  // Only show window after EXAM_URL is fully loaded (no white flash)
+  mainWindow.webContents.once('did-finish-load', () => {
     mainWindow!.setTitle(APP_NAME)
     mainWindow!.maximize()
     mainWindow!.show()

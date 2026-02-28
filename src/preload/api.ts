@@ -24,5 +24,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onTabViolation: (callback: () => void) => {
     ipcRenderer.on('tab-violation', () => callback())
-  }
+  },
 })
