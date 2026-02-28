@@ -1,7 +1,10 @@
 import { ipcRenderer } from 'electron'
 
+const DISMISS_COOLDOWN_MS = 30_000
+
 let blockedProcesses: string[] = []
 let multipleDisplays = false
+let dismissedUntil = 0
 
 function injectStyles(): void {
   if (document.getElementById('__blocked_styles')) return
@@ -201,22 +204,15 @@ function createOverlay(): HTMLDivElement {
       <div class="__blocked_divider"></div>
       <div id="__blocked_issues"></div>
       <div class="__blocked_footer">
-        <button id="__blocked_check_btn" class="__blocked_dismiss_btn">Check Again</button>
+        <button id="__blocked_check_btn" class="__blocked_dismiss_btn">I Understand</button>
       </div>
     </div>
   `
 
-  overlay.querySelector('#__blocked_check_btn')!.addEventListener('click', async () => {
-    const btn = overlay.querySelector('#__blocked_check_btn') as HTMLButtonElement
-    btn.textContent = 'Checking...'
-    btn.disabled = true
-    const blocked = await ipcRenderer.invoke('check-blocked-processes') as string[]
-    btn.textContent = 'Check Again'
-    btn.disabled = false
-    if (blocked.length === 0 && !multipleDisplays) {
-      blockedProcesses = []
-      overlay.style.display = 'none'
-    }
+  overlay.querySelector('#__blocked_check_btn')!.addEventListener('click', () => {
+    // Dismiss overlay, auto re-check after 30s
+    dismissedUntil = Date.now() + DISMISS_COOLDOWN_MS
+    overlay.style.display = 'none'
   })
 
   return overlay
@@ -228,9 +224,13 @@ function renderOverlay(): void {
   let overlay = document.getElementById('__blocked_overlay') as HTMLDivElement | null
 
   if (!hasIssues) {
+    dismissedUntil = 0
     if (overlay) overlay.style.display = 'none'
     return
   }
+
+  // User dismissed, wait 30s before showing again
+  if (Date.now() < dismissedUntil) return
 
   if (!overlay) {
     overlay = createOverlay()
@@ -292,5 +292,13 @@ ipcRenderer.on('check-blocked-processes', (_event, processes: string[]) => {
 
 ipcRenderer.on('display-count', (_event, count: number) => {
   multipleDisplays = count > 1
+  renderOverlay()
+})
+
+// Listen for force-check from main (triggered by web app's checkSecurityViolations)
+ipcRenderer.on('force-security-check', (_event, data: { blockedProcesses: string[]; displayCount: number }) => {
+  blockedProcesses = data.blockedProcesses
+  multipleDisplays = data.displayCount > 1
+  dismissedUntil = 0
   renderOverlay()
 })

@@ -28,14 +28,11 @@ export const registerIpcHandlers = (): void => {
 
     const hasViolation = blocked.length > 0 || displayCount > 1
     const win = BrowserWindow.fromWebContents(event.sender)
-
     if (hasViolation && win && !win.isDestroyed()) {
-      if (blocked.length > 0) {
-        win.webContents.send('check-blocked-processes', blocked)
-      }
-      if (displayCount > 1) {
-        win.webContents.send('display-count', displayCount)
-      }
+      win.webContents.send('force-security-check', {
+        blockedProcesses: blocked,
+        displayCount
+      })
     }
 
     return hasViolation
