@@ -84,6 +84,16 @@ const createWindow = (): void => {
     mainWindow!.show()
   })
 
+  // Show window on load failure so it's not invisible forever
+  mainWindow.webContents.on('did-fail-load', (_event, _code, description) => {
+    console.error('[LoadError]:', description)
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.setTitle(APP_NAME)
+      mainWindow.maximize()
+      mainWindow.show()
+    }
+  })
+
   // Re-apply content protection after every page load
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.setContentProtection(true)
