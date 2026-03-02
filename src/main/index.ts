@@ -365,3 +365,22 @@ app.on('window-all-closed', () => {
   forceQuit = true
   app.quit()
 })
+
+// --- Process event handlers (production only) ---
+
+if (app.isPackaged) {
+  const relaunchApp = (): void => {
+    app.relaunch()
+    app.exit(0)
+  }
+
+  process.on('uncaughtException', (err) => {
+    console.error('[ProcessEvent] uncaughtException:', err)
+    relaunchApp()
+  })
+
+  process.on('SIGTERM', () => {
+    console.info('[ProcessEvent] SIGTERM')
+    relaunchApp()
+  })
+}
