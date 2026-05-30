@@ -180,7 +180,9 @@ function showConfirm(options: ConfirmOptions): void {
     }
     overlay!.style.opacity = '0'
     card.classList.remove('show')
-    setTimeout(() => { overlay!.style.display = 'none' }, 200)
+    setTimeout(() => {
+      overlay!.style.display = 'none'
+    }, 200)
   }
 
   const confirm = () => {

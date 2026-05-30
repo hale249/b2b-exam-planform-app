@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke('check-blocked-processes')
   },
   checkSecurityViolations: (): Promise<boolean> => {
-    return ipcRenderer.invoke('check-security-violations')
+    return ipcRenderer.invoke('check-exam-security')
   },
   openExternalUrl: (url: string): Promise<void> => {
     return ipcRenderer.invoke('open-external-url', url)
@@ -24,5 +24,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onTabViolation: (callback: () => void) => {
     ipcRenderer.on('tab-violation', () => callback())
-  },
+  }
 })

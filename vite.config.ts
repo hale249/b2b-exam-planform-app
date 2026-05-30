@@ -14,7 +14,9 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron/main',
-            emptyOutDir: true
+            emptyOutDir: true,
+            minify: 'esbuild',
+            sourcemap: false
           }
         }
       },
@@ -26,7 +28,9 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron/preload',
-            emptyOutDir: true
+            emptyOutDir: true,
+            minify: 'esbuild',
+            sourcemap: false
           }
         }
       }

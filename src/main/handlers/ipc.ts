@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, screen, shell } from 'electron'
 
-import { checkBlockedProcesses } from '../services/process-blocker'
+import { checkBlockedApps } from '../services/process-blocker'
+import { setBlockedProcessesActive, setMultipleDisplaysActive } from '../security-lock'
 
 export const registerIpcHandlers = (): void => {
   ipcMain.handle('open-external-url', (_event, url: string) => {
@@ -8,7 +9,8 @@ export const registerIpcHandlers = (): void => {
   })
 
   ipcMain.handle('check-blocked-processes', async (event) => {
-    const blocked = await checkBlockedProcesses()
+    const blocked = await checkBlockedApps()
+    setBlockedProcessesActive(blocked.length > 0)
 
     if (blocked.length > 0) {
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -20,11 +22,14 @@ export const registerIpcHandlers = (): void => {
     return blocked
   })
 
-  ipcMain.handle('check-security-violations', async (event) => {
+  ipcMain.handle('check-exam-security', async (event) => {
     const [blocked, displayCount] = await Promise.all([
-      checkBlockedProcesses(),
+      checkBlockedApps(),
       Promise.resolve(screen.getAllDisplays().length)
     ])
+
+    setBlockedProcessesActive(blocked.length > 0)
+    setMultipleDisplaysActive(displayCount > 1)
 
     const hasViolation = blocked.length > 0 || displayCount > 1
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -41,7 +46,18 @@ export const registerIpcHandlers = (): void => {
   ipcMain.handle('set-fullscreen', (event, enabled: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) {
-      win.setKiosk(enabled)
+      if (enabled) {
+        win.setKiosk(true)
+        // Keep the exam above everything and present on every Space, so a
+        // trackpad swipe between desktops/full-screen apps can't reveal
+        // anything behind it (macOS won't let an app block the swipe itself).
+        win.setAlwaysOnTop(true, 'screen-saver')
+        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      } else {
+        win.setVisibleOnAllWorkspaces(false)
+        win.setAlwaysOnTop(false)
+        win.setKiosk(false)
+      }
     }
   })
 

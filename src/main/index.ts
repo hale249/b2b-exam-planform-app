@@ -1,7 +1,14 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, session, systemPreferences } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, screen, session } from 'electron'
 import { join } from 'path'
 import { startProcessMonitor, stopProcessMonitor } from './handlers/process-blocker'
 import { registerIpcHandlers } from './handlers/ipc'
+import { initSecurityLock, isSecurityBlockActive, setMultipleDisplaysActive } from './security-lock'
+import {
+  initCrashRecovery,
+  noteSuccessfulLoad,
+  recoverRenderer,
+  relaunchWithGuard
+} from './crash-recovery'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
 const APP_NAME = import.meta.env.VITE_APP_NAME
@@ -63,15 +70,25 @@ const createWindow = (): void => {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
-  // When in kiosk/exam mode: detect blur, force focus back, notify renderer
+  // When in kiosk/exam mode: detect blur, force focus back, notify renderer.
+  // While a security violation is active we let the window lose focus so the
+  // student can switch to the prohibited app and close it.
   mainWindow.on('blur', () => {
+    if (isSecurityBlockActive()) return
     if (mainWindow && !mainWindow.isDestroyed() && !forceQuit && mainWindow.isKiosk()) {
       mainWindow.webContents.send('tab-violation')
-      setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isKiosk()) {
-          mainWindow.focus()
-        }
-      }, 100)
+      // Pull focus back to the exam. On macOS Cmd+Tab is OS-reserved and can't be
+      // disabled, and a plain focus() won't yank the app in front of whatever the
+      // student switched to — app.focus({ steal: true }) + moveTop() do. Run it
+      // immediately and again once the app-switch settles.
+      const refocus = (): void => {
+        if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isKiosk()) return
+        if (process.platform === 'darwin') app.focus({ steal: true })
+        mainWindow.moveTop()
+        mainWindow.focus()
+      }
+      refocus()
+      setTimeout(refocus, 100)
     }
   })
 
@@ -84,19 +101,52 @@ const createWindow = (): void => {
     mainWindow!.show()
   })
 
-  // Show window on load failure so it's not invisible forever
-  mainWindow.webContents.on('did-fail-load', (_event, _code, description) => {
-    console.error('[LoadError]:', description)
+  // Retry loading the exam on transient failures (e.g. flaky network) with
+  // backoff, instead of leaving the student on a dead page.
+  let loadRetries = 0
+  const MAX_LOAD_RETRIES = 5
+  mainWindow.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
+    // -3 = ERR_ABORTED (our own redirects); only care about the main frame.
+    if (!isMainFrame || code === -3) return
+    console.error('[LoadError]:', code, description)
+
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.setTitle(APP_NAME)
       mainWindow.maximize()
       mainWindow.show()
     }
+
+    if (loadRetries < MAX_LOAD_RETRIES) {
+      loadRetries++
+      const delay = Math.min(1000 * loadRetries, 5000)
+      setTimeout(() => mainWindow?.loadURL(EXAM_URL), delay)
+    } else {
+      recoverRenderer()
+    }
   })
 
-  // Re-apply content protection after every page load
   mainWindow.webContents.on('did-finish-load', () => {
+    // Re-apply content protection after every page load.
     mainWindow?.setContentProtection(true)
+    // Page loaded fine — reset the retry/loop guards.
+    loadRetries = 0
+    noteSuccessfulLoad()
+  })
+
+  // Renderer crashed ("Aw, snap") — recover unless it exited cleanly.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Crash] render-process-gone:', details.reason, details.exitCode)
+    if (details.reason === 'clean-exit') return
+    recoverRenderer()
+  })
+
+  // Window hung — force a reload to kill the stuck renderer.
+  mainWindow.on('unresponsive', () => {
+    console.error('[Crash] window unresponsive — recovering')
+    recoverRenderer()
+  })
+  mainWindow.on('responsive', () => {
+    console.warn('[Crash] window responsive again')
   })
 
   mainWindow.on('page-title-updated', (e) => {
@@ -109,6 +159,8 @@ const createWindow = (): void => {
     mainWindow.webContents.openDevTools()
   }
 
+  initSecurityLock(() => mainWindow)
+  initCrashRecovery(() => mainWindow, EXAM_URL)
   startProcessMonitor(mainWindow)
   startDisplayMonitor(mainWindow)
 }
@@ -118,6 +170,7 @@ let displayIntervalId: ReturnType<typeof setInterval> | null = null
 const checkDisplayCount = (win: BrowserWindow): void => {
   if (win.isDestroyed() || win.webContents.isDestroyed()) return
   const displays = screen.getAllDisplays()
+  setMultipleDisplaysActive(displays.length > 1)
   win.webContents.send('display-count', displays.length)
 }
 
@@ -168,22 +221,28 @@ app.on('before-quit', () => {
   forceQuit = true
 })
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   if (!gotTheLock) return
 
-  // Request microphone permission on macOS
-  if (process.platform === 'darwin') {
-    const status = systemPreferences.getMediaAccessStatus('microphone')
-    if (status === 'not-determined') {
-      await systemPreferences.askForMediaAccess('microphone')
-    }
-  }
-
-  createWindow()
-  registerBlockedShortcuts()
-
-  // Allow media permissions
-  const allowedPermissions = ['clipboard-read', 'clipboard-sanitized-write', 'media', 'microphone', 'audioCapture', 'videoCapture']
+  // Auto-allow the media permissions the exam needs. Register the handlers
+  // BEFORE the window loads the exam URL — otherwise an early getUserMedia call
+  // during page load can hit Electron's default behaviour and pop a permission
+  // prompt even though access is already granted.
+  //
+  // We do NOT pre-ask for the microphone at startup: macOS shows its own one-time
+  // system prompt the first time getUserMedia actually runs (i.e. when entering the
+  // Speaking skill). If the user denied it, the WEB app already detects the
+  // NotAllowedError and routes to its own mic-permission-guide page (with an
+  // "Open Settings" button), so the desktop side just grants and stays out of the
+  // way — no native dialog of our own.
+  const allowedPermissions = [
+    'clipboard-read',
+    'clipboard-sanitized-write',
+    'media',
+    'microphone',
+    'audioCapture',
+    'videoCapture'
+  ]
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
     return allowedPermissions.includes(permission)
   })
@@ -191,12 +250,24 @@ app.whenReady().then(async () => {
     callback(allowedPermissions.includes(permission))
   })
 
+  createWindow()
+  registerBlockedShortcuts()
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
 })
+
+// Leave the exam lockdown: undo kiosk + the always-on-top / all-Spaces flags
+// applied when entering fullscreen, so the window behaves normally afterwards.
+const exitExamLock = (): void => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.setVisibleOnAllWorkspaces(false)
+  mainWindow.setAlwaysOnTop(false)
+  if (mainWindow.isKiosk()) mainWindow.setKiosk(false)
+}
 
 const registerBlockedShortcuts = (): void => {
   globalShortcut.register('PrintScreen', () => {})
@@ -206,15 +277,25 @@ const registerBlockedShortcuts = (): void => {
   globalShortcut.register('CommandOrControl+Control+Shift+3', () => {})
   globalShortcut.register('CommandOrControl+Control+Shift+4', () => {})
 
-  // Block Alt+Tab / Cmd+Tab
-  globalShortcut.register('Alt+Tab', () => {})
-  globalShortcut.register('CommandOrControl+Tab', () => {})
+  // Block Alt+Tab / Cmd+Tab. NOTE: on macOS Cmd+Tab (and Mission Control's
+  // Control+Arrow) are OS-reserved — register() returns false and the switcher
+  // still works. We log that so it's visible; the blur→refocus trap above is what
+  // actually enforces the lockdown on macOS.
+  const blockShortcut = (accelerator: string): void => {
+    if (!globalShortcut.register(accelerator, () => {})) {
+      console.warn(
+        `[Lockdown] Could not block "${accelerator}" (OS-reserved) — relying on the focus-trap instead.`
+      )
+    }
+  }
+  blockShortcut('Alt+Tab')
+  blockShortcut('CommandOrControl+Tab')
 
   // Block Mission Control / Exposé shortcuts
-  globalShortcut.register('Control+Up', () => {})
-  globalShortcut.register('Control+Down', () => {})
-  globalShortcut.register('Control+Left', () => {})
-  globalShortcut.register('Control+Right', () => {})
+  blockShortcut('Control+Up')
+  blockShortcut('Control+Down')
+  blockShortcut('Control+Left')
+  blockShortcut('Control+Right')
 
   // Custom confirm dialog via renderer overlay
   const pendingConfirms = new Map<string, () => void>()
@@ -223,33 +304,41 @@ const registerBlockedShortcuts = (): void => {
 
   let escCooldownUntil = 0
 
-  ipcMain.on('confirm-response', (_event, { id, confirmed }: { id: string; confirmed: boolean }) => {
-    isConfirmShowing = false
-    // Cooldown to prevent Esc from immediately reopening confirm
-    escCooldownUntil = Date.now() + 500
-    // Handle quit confirm
-    if (id === pendingQuitConfirmId) {
-      pendingQuitConfirmId = null
-      if (confirmed) {
-        forceQuit = true
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.destroy()
+  ipcMain.on(
+    'confirm-response',
+    (_event, { id, confirmed }: { id: string; confirmed: boolean }) => {
+      isConfirmShowing = false
+      // Cooldown to prevent Esc from immediately reopening confirm
+      escCooldownUntil = Date.now() + 500
+      // Handle quit confirm
+      if (id === pendingQuitConfirmId) {
+        pendingQuitConfirmId = null
+        if (confirmed) {
+          forceQuit = true
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.destroy()
+          }
+          app.quit()
         }
-        app.quit()
+        return
       }
-      return
+      // Handle other confirms (reload, go home, fullscreen, esc)
+      if (confirmed) {
+        const action = pendingConfirms.get(id)
+        action?.()
+      }
+      pendingConfirms.delete(id)
     }
-    // Handle other confirms (reload, go home, fullscreen, esc)
-    if (confirmed) {
-      const action = pendingConfirms.get(id)
-      action?.()
-    }
-    pendingConfirms.delete(id)
-  })
+  )
 
   const showConfirm = (options: {
-    icon: string; iconColor: string; title: string; message: string
-    confirmLabel: string; confirmColor: string; cancelLabel: string
+    icon: string
+    iconColor: string
+    title: string
+    message: string
+    confirmLabel: string
+    confirmColor: string
+    cancelLabel: string
     onConfirm: () => void
   }) => {
     if (!mainWindow || isConfirmShowing) return
@@ -278,7 +367,7 @@ const registerBlockedShortcuts = (): void => {
       cancelLabel: 'Cancel',
       onConfirm: () => {
         bypassUnload()
-        if (mainWindow?.isKiosk()) mainWindow.setKiosk(false)
+        exitExamLock()
         if (ignoreCache) {
           mainWindow?.webContents.reloadIgnoringCache()
         } else {
@@ -297,13 +386,14 @@ const registerBlockedShortcuts = (): void => {
       icon: '🏠',
       iconColor: '#f59e0b',
       title: 'Return to Home',
-      message: 'Are you sure you want to go back to the home page? Your current test session will be interrupted.',
+      message:
+        'Are you sure you want to go back to the home page? Your current test session will be interrupted.',
       confirmLabel: 'Go to Home',
       confirmColor: '#d97706',
       cancelLabel: 'Stay',
       onConfirm: () => {
         bypassUnload()
-        if (mainWindow?.isKiosk()) mainWindow.setKiosk(false)
+        exitExamLock()
         mainWindow?.loadURL(EXAM_URL)
       }
     })
@@ -315,7 +405,13 @@ const registerBlockedShortcuts = (): void => {
       event.preventDefault()
       return
     }
-    if (input.key === 'Escape' && input.type === 'keyDown' && mainWindow?.isKiosk() && !isConfirmShowing && Date.now() > escCooldownUntil) {
+    if (
+      input.key === 'Escape' &&
+      input.type === 'keyDown' &&
+      mainWindow?.isKiosk() &&
+      !isConfirmShowing &&
+      Date.now() > escCooldownUntil
+    ) {
       event.preventDefault()
       showConfirm({
         icon: '',
@@ -327,7 +423,7 @@ const registerBlockedShortcuts = (): void => {
         cancelLabel: 'Cancel',
         onConfirm: () => {
           bypassUnload()
-          mainWindow?.setKiosk(false)
+          exitExamLock()
           mainWindow?.webContents.reload()
         }
       })
@@ -347,7 +443,7 @@ const registerBlockedShortcuts = (): void => {
         confirmColor: '#2563eb',
         cancelLabel: 'Cancel',
         onConfirm: () => {
-          mainWindow?.setKiosk(false)
+          exitExamLock()
         }
       })
     } else {
@@ -379,18 +475,13 @@ app.on('window-all-closed', () => {
 // --- Process event handlers (production only) ---
 
 if (app.isPackaged) {
-  const relaunchApp = (): void => {
-    app.relaunch()
-    app.exit(0)
-  }
-
   process.on('uncaughtException', (err) => {
     console.error('[ProcessEvent] uncaughtException:', err)
-    relaunchApp()
+    relaunchWithGuard()
   })
 
   process.on('SIGTERM', () => {
-    console.info('[ProcessEvent] SIGTERM')
-    relaunchApp()
+    console.warn('[ProcessEvent] SIGTERM')
+    relaunchWithGuard()
   })
 }
