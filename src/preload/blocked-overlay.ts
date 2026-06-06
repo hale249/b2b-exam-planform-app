@@ -1,6 +1,6 @@
 import { ipcRenderer } from 'electron'
 
-const DISMISS_COOLDOWN_MS = 30_000
+const DISMISS_COOLDOWN_MS = 15_000
 
 let blockedProcesses: string[] = []
 let multipleDisplays = false
@@ -235,6 +235,10 @@ function createOverlay(): HTMLDivElement {
   `
 
   overlay.querySelector('#__blocked_check_btn')!.addEventListener('click', () => {
+    // A multiple-display violation can NOT be dismissed — the overlay stays
+    // until the extra display is actually disconnected. (The button is hidden
+    // in that state; this guard covers any race.)
+    if (multipleDisplays) return
     // Dismiss the overlay and stay hidden for the cooldown. The periodic
     // monitor (and force-security-check) re-render after that, so it pops
     // back up if the violation is still present.
@@ -256,8 +260,10 @@ function renderOverlay(): void {
     return
   }
 
-  // User dismissed — stay hidden until the cooldown elapses.
-  if (Date.now() < dismissedUntil) return
+  // User dismissed — stay hidden until the cooldown elapses. A display
+  // violation overrides the cooldown: it must be shown immediately and can
+  // never be dismissed.
+  if (!multipleDisplays && Date.now() < dismissedUntil) return
 
   if (!overlay) {
     overlay = createOverlay()
@@ -306,6 +312,21 @@ function renderOverlay(): void {
   }
 
   issues.innerHTML = html
+
+  // Display violations are not dismissible: hide the "I understand" button so
+  // the only way out is disconnecting the extra screen. Process-only
+  // violations keep the dismissible behaviour (15s cooldown).
+  const checkBtn = overlay.querySelector('#__blocked_check_btn') as HTMLButtonElement
+  const hint = overlay.querySelector('.__blocked_hint') as HTMLParagraphElement
+  if (multipleDisplays) {
+    checkBtn.style.display = 'none'
+    hint.textContent =
+      'Disconnect the external display to continue. This window closes automatically once only one screen remains.'
+  } else {
+    checkBtn.style.display = ''
+    hint.textContent = 'This window updates automatically once everything is resolved.'
+  }
+
   overlay.style.display = 'flex'
 }
 

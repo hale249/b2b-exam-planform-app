@@ -1,10 +1,18 @@
 import { BrowserWindow, ipcMain, screen, shell } from 'electron'
 
+import { armExamLock, disarmExamLock } from '../exam-lock'
 import { checkBlockedApps } from '../services/process-blocker'
-import { setBlockedProcessesActive, setMultipleDisplaysActive } from '../security-lock'
+import {
+  isFullscreenSuppressed,
+  setBlockedProcessesActive,
+  setMultipleDisplaysActive
+} from '../security-lock'
 
 export const registerIpcHandlers = (): void => {
   ipcMain.handle('open-external-url', (_event, url: string) => {
+    // The exam page is remote content — never pass through non-web schemes
+    // (file://, smb://, ...) to the OS.
+    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return
     return shell.openExternal(url)
   })
 
@@ -47,16 +55,14 @@ export const registerIpcHandlers = (): void => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) {
       if (enabled) {
-        win.setKiosk(true)
-        // Keep the exam above everything and present on every Space, so a
-        // trackpad swipe between desktops/full-screen apps can't reveal
-        // anything behind it (macOS won't let an app block the swipe itself).
-        win.setAlwaysOnTop(true, 'screen-saver')
-        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        // The user just confirmed leaving the exam — ignore late requests
+        // from the previous page so kiosk doesn't re-arm right away.
+        if (isFullscreenSuppressed()) return
+        // Staged arm: kiosk first, lock flags only after fullscreen really
+        // engaged, retry if macOS dropped the request mid Space-swipe.
+        armExamLock(win)
       } else {
-        win.setVisibleOnAllWorkspaces(false)
-        win.setAlwaysOnTop(false)
-        win.setKiosk(false)
+        disarmExamLock(win)
       }
     }
   })

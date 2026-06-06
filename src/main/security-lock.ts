@@ -27,6 +27,18 @@ export const setMultipleDisplaysActive = (multiple: boolean): void => {
   apply()
 }
 
+// After a user-confirmed exit from the exam (Esc), ignore set-fullscreen(true)
+// requests for a short window. The page being navigated away from may still
+// have an IPC call in flight that would otherwise re-arm kiosk immediately
+// after the user chose to leave.
+let fullscreenSuppressedUntil = 0
+
+export const suppressFullscreenRequests = (ms: number): void => {
+  fullscreenSuppressedUntil = Date.now() + ms
+}
+
+export const isFullscreenSuppressed = (): boolean => Date.now() < fullscreenSuppressedUntil
+
 const apply = (): void => {
   const next = procsBlocked || displayBlocked
   if (next === active) return

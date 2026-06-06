@@ -37,6 +37,23 @@ const FATAL_HTML = page(
   'Đã thử lại nhiều lần nhưng chưa được. Vui lòng khởi động lại ứng dụng hoặc liên hệ giám thị.',
   false
 )
+const OFFLINE_HTML = page(
+  'Mất kết nối mạng',
+  'Không thể kết nối tới máy chủ bài thi. Ứng dụng sẽ tự thử lại khi có mạng — vui lòng kiểm tra Wi-Fi hoặc dây mạng.',
+  true
+)
+
+// A failed navigation leaves the window on whatever was committed before —
+// which on first launch is NOTHING (pure white). Commit an explicit offline
+// screen so the student sees what is happening from the very first failure.
+// No-op if it is already showing, so the 5s retry loop doesn't flicker it.
+export const showOfflineScreen = (): void => {
+  const win = getWindow()
+  if (!win || win.isDestroyed()) return
+  if (win.webContents.getURL() === OFFLINE_HTML) return
+  console.warn('[Offline] showing offline screen, will keep retrying')
+  win.loadURL(OFFLINE_HTML)
+}
 
 // --- Renderer recovery loop guard (in-memory, per run) ---
 let recoveries: number[] = []

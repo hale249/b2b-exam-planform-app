@@ -25,7 +25,7 @@ export const startProcessMonitor = (mainWindow: BrowserWindow): void => {
     safeSend(mainWindow, blocked)
   })
 
-  // Periodic check every 5 seconds
+  // Periodic check every 30 seconds
   intervalId = setInterval(async () => {
     if (mainWindow.isDestroyed()) {
       stopProcessMonitor()

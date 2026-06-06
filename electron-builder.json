@@ -19,7 +19,7 @@
     "runAsNode": false,
     "enableNodeOptionsEnvironmentVariable": false,
     "enableNodeCliInspectArguments": false,
-    "enableCookieEncryption": true,
+    "enableCookieEncryption": false,
     "onlyLoadAppFromAsar": true,
     "enableEmbeddedAsarIntegrityValidation": true
   },

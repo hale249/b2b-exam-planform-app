@@ -52,7 +52,28 @@ export const checkBlockedWindows = async (): Promise<string[]> => {
 
 // Combined detection: blocked processes (by executable) + blocked windows
 // (by title), de-duplicated by app name.
-export const checkBlockedApps = async (): Promise<string[]> => {
-  const [byProcess, byWindow] = await Promise.all([checkBlockedProcesses(), checkBlockedWindows()])
-  return Array.from(new Set([...byProcess, ...byWindow]))
+//
+// Both scans spawn real OS work (a `ps`/`tasklist` child process + a window
+// enumeration) and the exam page can call check-exam-security in bursts.
+// Reuse the in-flight scan and keep the result briefly, so a burst costs one
+// scan instead of N concurrent child processes piling up on the main process.
+const SCAN_CACHE_MS = 2_000
+let inflightScan: Promise<string[]> | null = null
+let lastScanResult: string[] = []
+let lastScanAt = 0
+
+export const checkBlockedApps = (): Promise<string[]> => {
+  if (inflightScan) return inflightScan
+  if (Date.now() - lastScanAt < SCAN_CACHE_MS) return Promise.resolve(lastScanResult)
+
+  inflightScan = Promise.all([checkBlockedProcesses(), checkBlockedWindows()])
+    .then(([byProcess, byWindow]) => {
+      lastScanResult = Array.from(new Set([...byProcess, ...byWindow]))
+      lastScanAt = Date.now()
+      return lastScanResult
+    })
+    .finally(() => {
+      inflightScan = null
+    })
+  return inflightScan
 }
