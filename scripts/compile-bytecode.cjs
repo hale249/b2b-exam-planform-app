@@ -10,7 +10,11 @@
 //   2. overwrites index.js with a tiny loader that requires the .jsc
 // The package `main` entry keeps pointing at index.js (the loader).
 
-const { app } = require('electron')
+const electron = require('electron')
+// Under ELECTRON_RUN_AS_NODE=1 (used on headless CI), require('electron') is just
+// the binary path string and there is no `app` — run directly as Node instead.
+// It still runs Electron's V8, so the produced .jsc stays compatible.
+const app = typeof electron === 'object' && electron ? electron.app : undefined
 const bytenode = require('bytenode')
 const fs = require('fs')
 const path = require('path')
@@ -43,12 +47,21 @@ async function run() {
   }
 }
 
-app.whenReady().then(async () => {
-  try {
-    await run()
-    app.exit(0)
-  } catch (err) {
-    console.error('[bytecode] failed:', err)
-    app.exit(1)
-  }
-})
+if (app) {
+  app.whenReady().then(async () => {
+    try {
+      await run()
+      app.exit(0)
+    } catch (err) {
+      console.error('[bytecode] failed:', err)
+      app.exit(1)
+    }
+  })
+} else {
+  run()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('[bytecode] failed:', err)
+      process.exit(1)
+    })
+}

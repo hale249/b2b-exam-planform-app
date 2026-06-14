@@ -60,6 +60,8 @@ build:linux:
   image: electronuserland/builder:latest
   environment:
     name: $TARGET_ENV
+  variables:
+    ELECTRON_RUN_AS_NODE: "1"
   cache: *pnpm_cache
   before_script: *setup_pnpm
   script:
@@ -79,6 +81,8 @@ build:windows:
   tags: [saas-windows-medium-amd64]
   environment:
     name: $TARGET_ENV
+  variables:
+    ELECTRON_RUN_AS_NODE: "1"
   before_script: *setup_pnpm
   script:
     - Copy-Item $env:ENV_FILE .env
@@ -97,6 +101,8 @@ build:mac:
   tags: [saas-macos-medium-m1]
   environment:
     name: $TARGET_ENV
+  variables:
+    ELECTRON_RUN_AS_NODE: "1"
   before_script: *setup_pnpm
   script:
     - cp "$ENV_FILE" .env
