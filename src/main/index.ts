@@ -16,6 +16,8 @@ import {
   relaunchWithGuard,
   showOfflineScreen
 } from './crash-recovery'
+import { runUpdateGate } from './updater'
+import { registerManualUpdater } from './manual-updater'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
 const APP_NAME = import.meta.env.VITE_APP_NAME
@@ -193,7 +195,13 @@ const createWindow = (): void => {
     e.preventDefault()
   })
 
-  mainWindow.loadURL(EXAM_URL)
+  // Force-update gate: show the updater screen and only navigate to the exam
+  // once it clears (no update / error / timeout). If an update is found it
+  // downloads, installs and relaunches — no student ever runs a stale build.
+  // In dev (unpackaged) the gate falls through to the exam immediately.
+  runUpdateGate(mainWindow, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(EXAM_URL)
+  })
 
   if (!isProduction) {
     mainWindow.webContents.openDevTools()
@@ -257,6 +265,9 @@ if (!gotTheLock) {
 }
 
 registerIpcHandlers()
+// User-initiated update flow (batch screen): the renderer checks/downloads/installs
+// on demand, separate from the startup force-update gate.
+registerManualUpdater(() => mainWindow)
 
 ipcMain.handle('allow-quit', () => {
   allowQuit = true

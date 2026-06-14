@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
 
 import { armExamLock, disarmExamLock } from '../exam-lock'
 import { checkBlockedApps } from '../services/process-blocker'
@@ -9,6 +9,10 @@ import {
 } from '../security-lock'
 
 export const registerIpcHandlers = (): void => {
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion()
+  })
+
   ipcMain.handle('open-external-url', (_event, url: string) => {
     // The exam page is remote content — never pass through non-web schemes
     // (file://, smb://, ...) to the OS.
