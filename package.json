@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Secure Electron exam platform with anti-cheating measures",
   "main": "./dist-electron/main/index.js",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "dev": "vite",
     "clean": "rimraf dist dist-electron",
@@ -36,6 +37,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^24.12.4",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.7.0",

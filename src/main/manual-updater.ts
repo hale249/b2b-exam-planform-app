@@ -90,8 +90,7 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
       const releaseName = String(info?.releaseName || '')
       const releaseDate = String(info?.releaseDate || '')
       // v6 exposes isUpdateAvailable; fall back to a version diff if absent.
-      const available =
-        result?.isUpdateAvailable ?? (!!version && version !== currentVersion)
+      const available = result?.isUpdateAvailable ?? (!!version && version !== currentVersion)
       return { available, version, currentVersion, releaseNotes, releaseName, releaseDate }
     } catch (err) {
       return {
