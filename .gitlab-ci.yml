@@ -8,6 +8,7 @@ stages:
 variables:
   VERSION: "${CI_COMMIT_TAG}"
   APP_NAME: "prepedu-exam-platform"
+  GCS_BUCKET: "local-dev"
   GCS_BASE_URL: "https://storage.googleapis.com/${GCS_BUCKET}"
   PUBLISH_TO_GCS: "false"
 
@@ -42,7 +43,7 @@ variables:
 
 lint-and-typecheck:
   stage: validate
-  image: node:22-bookworm
+  image: node:24-bookworm
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH'
