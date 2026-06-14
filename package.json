@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Secure Electron exam platform with anti-cheating measures",
   "main": "./dist-electron/main/index.js",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "dev": "vite",
     "clean": "rimraf dist dist-electron",
