@@ -5,6 +5,10 @@
     "buildResources": "resources",
     "output": "dist"
   },
+  "publish": {
+    "provider": "generic",
+    "url": "https://storage.googleapis.com/${env.GCS_BUCKET}/"
+  },
   "files": [
     "!**/.vscode/*",
     "!src/*",
@@ -53,6 +57,10 @@
       {
         "target": "dmg",
         "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
       }
     ]
   },
@@ -64,9 +72,10 @@
       }
     ],
     "maintainer": "prepedu.com",
-    "category": "Education"
+    "category": "Education",
+    "artifactName": "${name}-${version}.${ext}"
   },
   "dmg": {
-    "artifactName": "${name}-${version}.${ext}"
+    "artifactName": "${name}-${version}-${arch}.${ext}"
   }
 }

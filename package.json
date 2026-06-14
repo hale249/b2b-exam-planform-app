@@ -1,18 +1,20 @@
 {
-  "name": "b2b-exam-platform-app",
+  "name": "prepedu-exam-platform",
   "version": "1.0.0",
   "description": "Secure Electron exam platform with anti-cheating measures",
   "main": "./dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",
-    "clean": "npx rimraf dist dist-electron",
-    "build": "npm run clean && vite build",
+    "clean": "rimraf dist dist-electron",
+    "build": "rimraf dist dist-electron && vite build",
     "bytecode": "electron scripts/compile-bytecode.cjs",
     "start": "electron .",
-    "build:unpack": "npm run clean && vite build && npm run bytecode && electron-builder --dir",
-    "build:win": "npm run clean && vite build && npm run bytecode && electron-builder --win",
-    "build:mac": "npm run clean && vite build && npm run bytecode && electron-builder --mac",
-    "build:linux": "npm run clean && vite build && npm run bytecode && electron-builder --linux",
+    "build:unpack": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --dir",
+    "build:win": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --win",
+    "build:mac": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --mac",
+    "build:linux": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --linux",
+    "build:local:mac": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && GCS_BUCKET=local-dev CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "build:local:dir": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && GCS_BUCKET=local-dev CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
     "typecheck": "tsc --noEmit --composite false -p tsconfig.node.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -21,7 +23,15 @@
   },
   "dependencies": {
     "bytenode": "^1.5.7",
+    "electron-updater": "^6.8.9",
     "vue": "^3.5.35"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-builder",
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

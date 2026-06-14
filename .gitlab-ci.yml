@@ -1,0 +1,204 @@
+# ============================================================================
+#  CI/CD — build & phát hành Prep Exam Platform (Electron) lên Google Cloud Storage
+#
+#  Triết lý:
+#   - Commit/MR thường  -> chỉ lint + typecheck (rẻ, nhanh).
+#   - Đánh tag X.Y.Z     -> build Win/Mac/Linux trên runner tương ứng,
+#                           upload lên GCS (public-read), verify manifest,
+#                           rồi tạo GitLab Release với "external link" trỏ GCS
+#                           (file KHÔNG nằm trong GitLab -> source private an toàn).
+#
+#  CI/CD Variables cần khai báo (Settings > CI/CD > Variables, Masked+Protected):
+#   GCS:       GCS_BUCKET, GCP_SA_KEY (type=File, nội dung = service-account JSON)
+#   Build env: VITE_APP_NAME, VITE_EXAM_URL
+#   Win sign:  CSC_LINK (base64 .pfx), CSC_KEY_PASSWORD
+#   Mac sign:  CSC_LINK (base64 .p12), CSC_KEY_PASSWORD,
+#              APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#   (Không có cert vẫn build ra file test, chỉ dính cảnh báo SmartScreen/Gatekeeper.)
+#
+#  CHUẨN BỊ TRÊN GCP (làm 1 lần, KHÔNG nằm trong CI):
+#   - Tạo bucket, bật public read:  gcloud storage buckets add-iam-policy-binding \
+#       gs://$GCS_BUCKET --member=allUsers --role=roles/storage.objectViewer
+#   - Service Account có roles/storage.objectAdmin trên bucket -> export key JSON.
+# ============================================================================
+
+stages:
+  - validate
+  - build
+  - publish
+  - verify
+  - release
+
+variables:
+  # QUAN TRỌNG: tag = semver KHÔNG có "v" và PHẢI trùng version trong package.json
+  # (electron-builder đặt tên file theo package.json, không theo tag).
+  # Quy trình: bump package.json -> commit -> `git tag 1.2.3`.
+  VERSION: "${CI_COMMIT_TAG}"
+  # Tên app = field "name" trong package.json (dùng để dựng URL file installer)
+  APP_NAME: "prepedu-exam-platform"
+  GCS_BASE_URL: "https://storage.googleapis.com/${GCS_BUCKET}"
+  # CÔNG TẮC đẩy GCS. "false" = chỉ build + xuất artifact để test CI (KHÔNG upload cloud,
+  # KHÔNG tạo Release). Đổi thành "true" (hoặc set ở Settings > CI/CD > Variables) khi muốn phát hành thật.
+  PUBLISH_TO_GCS: "false"
+
+# Build chạy với mọi tag semver.
+.on_tag: &on_tag
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+/'
+
+# Publish/verify/release CHỈ chạy khi tag semver VÀ công tắc bật.
+.on_tag_publish: &on_tag_publish
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+/ && $PUBLISH_TO_GCS == "true"'
+
+# ---------------------------------------------------------------------------
+# 1) VALIDATE — chạy mỗi MR / nhánh
+# ---------------------------------------------------------------------------
+lint-and-typecheck:
+  stage: validate
+  image: node:22-bookworm
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+  cache:
+    key:
+      files: [package-lock.json]
+    paths: [.npm/]
+  script:
+    - npm ci --cache .npm --prefer-offline
+    - npm run lint
+    - npm run typecheck
+
+# ---------------------------------------------------------------------------
+# 2) BUILD — mỗi OS trên runner đúng OS đó. Mỗi job sinh dist/ gồm installer +
+#    latest*.yml + .blockmap (generic provider -> KHÔNG tự upload, ta upload sau).
+#    Tái dùng đúng npm scripts của repo (đã gồm bytecode -> bảo vệ source).
+# ---------------------------------------------------------------------------
+build:linux:
+  <<: *on_tag
+  stage: build
+  image: electronuserland/builder:latest
+  cache:
+    key:
+      files: [package-lock.json]
+    paths: [.npm/]
+  script:
+    - npm ci --cache .npm --prefer-offline
+    - npm run build:linux      # clean + vite build + bytecode + electron-builder --linux
+  artifacts:
+    paths:
+      - dist/*.AppImage
+      - dist/*.blockmap
+      - dist/latest-linux.yml
+    expire_in: 1 week
+
+build:windows:
+  <<: *on_tag
+  stage: build
+  tags: [saas-windows-medium-amd64]   # đổi nếu dùng runner khác
+  script:
+    - npm ci
+    - npm run build:win
+  artifacts:
+    paths:
+      - dist/*-setup.exe
+      - dist/*.blockmap
+      - dist/latest.yml
+    expire_in: 1 week
+
+build:mac:
+  <<: *on_tag
+  stage: build
+  tags: [saas-macos-medium-m1]        # đổi cho khớp runner SaaS / self-host
+  script:
+    - npm ci
+    - npm run build:mac               # notarize tự chạy nếu có APPLE_ID/APPLE_TEAM_ID
+  artifacts:
+    paths:
+      - dist/*.dmg
+      - dist/*.zip
+      - dist/*.blockmap
+      - dist/latest-mac.yml
+    expire_in: 1 week
+
+# ---------------------------------------------------------------------------
+# 3) PUBLISH — gom artifact 3 OS, upload lên GCS bằng gcloud.
+#    THỨ TỰ AN TOÀN: installer + blockmap TRƯỚC, latest*.yml SAU CÙNG
+#    -> nếu fail nửa chừng, manifest vẫn là bản cũ, app không thấy bản gãy.
+# ---------------------------------------------------------------------------
+publish:gcs:
+  <<: *on_tag_publish
+  stage: publish
+  image: google/cloud-sdk:slim
+  needs:
+    - build:linux
+    - build:windows
+    - build:mac
+  script:
+    - gcloud auth activate-service-account --key-file="$GCP_SA_KEY"
+    - |
+      put() {
+        local cc="$1"; shift
+        for f in "$@"; do
+          [ -e "$f" ] || continue
+          echo ">> upload $f"
+          gcloud storage cp "$f" "gs://$GCS_BUCKET/" --cache-control="$cc"
+        done
+      }
+      # 1) Binaries + blockmaps (cache dài, tên có version nên không đụng nhau)
+      put "public,max-age=31536000" dist/*-setup.exe dist/*.dmg dist/*.AppImage dist/*.zip dist/*.blockmap
+      # 2) Manifests SAU CÙNG (no-cache để app luôn thấy bản mới nhất)
+      put "no-cache" dist/latest.yml dist/latest-mac.yml dist/latest-linux.yml
+
+# ---------------------------------------------------------------------------
+# 4) VERIFY — chống "đẩy nửa chừng": manifest mới phải trỏ tới file CÓ thật
+# ---------------------------------------------------------------------------
+verify:manifests:
+  <<: *on_tag_publish
+  stage: verify
+  image: alpine:3.20
+  script:
+    - apk add --no-cache curl
+    - |
+      check() {
+        local yml="$1"
+        echo ">> Kiểm tra ${yml}"
+        curl -fsSL "${GCS_BASE_URL}/${yml}" -o "${yml}" || { echo "Thiếu ${yml} trên GCS"; exit 1; }
+        local file
+        file=$(grep -E '^path:' "${yml}" | head -n1 | awk '{print $2}' | tr -d '\r')
+        echo "   trỏ tới: ${file}"
+        curl -fsI "${GCS_BASE_URL}/${file}" > /dev/null || { echo "Installer ${file} KHÔNG tồn tại"; exit 1; }
+        echo "   OK"
+      }
+      check "latest.yml"
+      check "latest-mac.yml"
+      check "latest-linux.yml"
+
+# ---------------------------------------------------------------------------
+# 5) RELEASE — GitLab Release, asset là EXTERNAL LINK trỏ GCS
+#    (file không host trong GitLab -> người dùng không chạm repo/source)
+# ---------------------------------------------------------------------------
+release:gitlab:
+  <<: *on_tag_publish
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  script:
+    - echo "Tạo GitLab Release cho ${CI_COMMIT_TAG}"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "Prep Exam Platform $CI_COMMIT_TAG"
+    description: "Bản phát hành $CI_COMMIT_TAG. Tải qua link bên dưới (host trên Google Cloud Storage)."
+    assets:
+      links:
+        - name: "Windows (.exe)"
+          url: "${GCS_BASE_URL}/${APP_NAME}-${VERSION}-setup.exe"
+          link_type: "package"
+        - name: "macOS — Apple Silicon (.dmg)"
+          url: "${GCS_BASE_URL}/${APP_NAME}-${VERSION}-arm64.dmg"
+          link_type: "package"
+        - name: "macOS — Intel (.dmg)"
+          url: "${GCS_BASE_URL}/${APP_NAME}-${VERSION}-x64.dmg"
+          link_type: "package"
+        - name: "Linux (.AppImage)"
+          url: "${GCS_BASE_URL}/${APP_NAME}-${VERSION}.AppImage"
+          link_type: "package"

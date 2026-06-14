@@ -27,3 +27,4 @@ dist-electron
 
 *.tsbuildinfo
 .env
+dev-app-update.yml

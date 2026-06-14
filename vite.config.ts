@@ -16,7 +16,13 @@ export default defineConfig({
             outDir: 'dist-electron/main',
             emptyOutDir: true,
             minify: 'esbuild',
-            sourcemap: false
+            sourcemap: false,
+            rollupOptions: {
+              // Load electron-updater from node_modules at runtime instead of
+              // bundling it — it has dynamic requires that don't bundle cleanly,
+              // and electron-builder ships it in the asar (it's a dependency).
+              external: ['electron-updater']
+            }
           }
         }
       },
