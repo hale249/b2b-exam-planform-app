@@ -63,7 +63,12 @@ build:linux:
   variables:
     ELECTRON_RUN_AS_NODE: "1"
   cache: *pnpm_cache
-  before_script: *setup_pnpm
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends libnss3 libnspr4 libgbm1 libgtk-3-0 libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 libatspi2.0-0
+    - corepack enable
+    - corepack prepare pnpm@10.26.1 --activate
+    - pnpm config set store-dir .pnpm-store
   script:
     - cp "$ENV_FILE" .env
     - pnpm install --frozen-lockfile
