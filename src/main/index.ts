@@ -22,6 +22,9 @@ import { IPC_CONSTANTS } from '../shared/ipc-channels'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
 const APP_NAME = import.meta.env.VITE_APP_NAME
+// Anti-screenshot/recording. Set DISABLE_SCREEN_PROTECTION=1 to turn it off
+// temporarily (e.g. to capture the UI for review) — never ship with it off.
+const SCREEN_PROTECTION = process.env.DISABLE_SCREEN_PROTECTION !== '1'
 
 let mainWindow: BrowserWindow | null = null
 let allowQuit = false
@@ -110,7 +113,7 @@ const createWindow = (): void => {
     }
   })
 
-  mainWindow.setContentProtection(true)
+  mainWindow.setContentProtection(SCREEN_PROTECTION)
 
   // Only show window after EXAM_URL is fully loaded (no white flash).
   // Then force it in front: the student may have switched to another app
@@ -166,7 +169,7 @@ const createWindow = (): void => {
 
   mainWindow.webContents.on('did-finish-load', () => {
     // Re-apply content protection after every page load.
-    mainWindow?.setContentProtection(true)
+    mainWindow?.setContentProtection(SCREEN_PROTECTION)
     // Only a successful EXAM load resets the crash guards. The recovery/fatal
     // screens are data: URLs and fire did-finish-load too — counting them as
     // success would wipe the loop guards and recover forever instead of ever
@@ -339,12 +342,14 @@ const exitExamLock = (): void => {
 }
 
 const registerBlockedShortcuts = (): void => {
-  globalShortcut.register('PrintScreen', () => {})
-  globalShortcut.register('CommandOrControl+Shift+3', () => {})
-  globalShortcut.register('CommandOrControl+Shift+4', () => {})
-  globalShortcut.register('CommandOrControl+Shift+5', () => {})
-  globalShortcut.register('CommandOrControl+Control+Shift+3', () => {})
-  globalShortcut.register('CommandOrControl+Control+Shift+4', () => {})
+  if (SCREEN_PROTECTION) {
+    globalShortcut.register('PrintScreen', () => {})
+    globalShortcut.register('CommandOrControl+Shift+3', () => {})
+    globalShortcut.register('CommandOrControl+Shift+4', () => {})
+    globalShortcut.register('CommandOrControl+Shift+5', () => {})
+    globalShortcut.register('CommandOrControl+Control+Shift+3', () => {})
+    globalShortcut.register('CommandOrControl+Control+Shift+4', () => {})
+  }
 
   // Block Alt+Tab / Cmd+Tab. NOTE: on macOS Cmd+Tab (and Mission Control's
   // Control+Arrow) are OS-reserved — register() returns false and the switcher
@@ -542,8 +547,10 @@ const registerBlockedShortcuts = (): void => {
     }
   })
 
-  globalShortcut.register('Super+Shift+S', () => {})
-  globalShortcut.register('Super+PrintScreen', () => {})
+  if (SCREEN_PROTECTION) {
+    globalShortcut.register('Super+Shift+S', () => {})
+    globalShortcut.register('Super+PrintScreen', () => {})
+  }
 
   if (app.isPackaged) {
     globalShortcut.register('CommandOrControl+Shift+I', () => {})
