@@ -21,6 +21,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Sequential: the 3 OS jobs publish to the SAME GitHub release. Running them
+      # in parallel races to create the release -> 422 already_exists. With
+      # max-parallel:1 the first job creates it, the rest just upload to it.
+      max-parallel: 1
       matrix:
         include:
           - os: macos-latest
