@@ -2,8 +2,8 @@ name: Release
 
 # Tag PREFIX selects the environment. Each maps to a GitHub Environment
 # (Settings > Environments) whose ENV_FILE secret holds that env's .env:
-#   dev-v1.0.0  -> dev        (branch develop)
-#   stg-v1.0.0  -> staging    (branch staging)
+#   dev_v1.0.0  -> dev        (branch develop)
+#   stg_v1.0.0  -> staging    (branch staging)
 #   v1.0.0      -> production (branch main)
 # Builds mac + windows + linux and publishes a GitHub Release for the tag.
 # X.Y.Z should match package.json version.
@@ -11,8 +11,8 @@ on:
   push:
     tags:
       - "v*"
-      - "stg-v*"
-      - "dev-v*"
+      - "stg_v*"
+      - "dev_v*"
   workflow_dispatch:
 
 permissions:
@@ -26,7 +26,7 @@ jobs:
   release:
     name: Build & Release (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
-    environment: ${{ startsWith(github.ref_name, 'dev-') && 'dev' || startsWith(github.ref_name, 'stg-') && 'staging' || 'production' }}
+    environment: ${{ startsWith(github.ref_name, 'dev_') && 'dev' || startsWith(github.ref_name, 'stg_') && 'staging' || 'production' }}
     strategy:
       fail-fast: false
       matrix:
