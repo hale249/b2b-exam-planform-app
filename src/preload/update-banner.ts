@@ -8,7 +8,7 @@ import { IPC_CONSTANTS } from '../shared/ipc-channels'
 // Flow: available -> [Update now] -> downloading (progress) -> ready -> [Restart].
 
 let el: HTMLDivElement | null = null
-let state: 'available' | 'downloading' | 'ready' = 'available'
+let state: 'available' | 'downloading' | 'ready' | 'restarting' = 'available'
 let version = ''
 let percent = 0
 
@@ -52,6 +52,9 @@ function injectStyles(): void {
     .__upd_ghost{background:#f3f4f6;color:#23242d;flex:0 0 auto;padding:9px 14px}
     .__upd_ghost:hover{background:#e5e7eb}
     body.__upd_dl .__upd_bar,body.__upd_dl .__upd_pct{display:block}
+    .__upd_spin{width:20px;height:20px;border:2.5px solid #dbe7fb;border-top-color:#0071F9;
+      border-radius:50%;animation:__upd_sp .7s linear infinite;margin:4px auto 0}
+    @keyframes __upd_sp{to{transform:rotate(360deg)}}
   `
   document.head.appendChild(s)
 }
@@ -119,16 +122,26 @@ function render(): void {
     fill.style.width = percent.toFixed(0) + '%'
     pctEl.textContent = percent.toFixed(0) + '%'
     act.innerHTML = ''
-  } else {
+  } else if (state === 'ready') {
     tt.textContent = 'Update ready'
     sb.textContent = 'Restart to finish updating'
     act.innerHTML =
       '<button class="__upd_btn __upd_primary" id="__upd_restart">Restart now</button>' +
       '<button class="__upd_btn __upd_ghost" id="__upd_later">Later</button>'
-    ;(el.querySelector('#__upd_restart') as HTMLElement).onclick = () =>
-      ipcRenderer.invoke(IPC_CONSTANTS.UPDATER_INSTALL)
+    ;(el.querySelector('#__upd_restart') as HTMLElement).onclick = restart
     ;(el.querySelector('#__upd_later') as HTMLElement).onclick = hide
+  } else {
+    tt.textContent = 'Restarting to update…'
+    sb.textContent = 'The app will reopen automatically.'
+    act.innerHTML = '<div class="__upd_spin"></div>'
   }
+}
+
+function restart(): void {
+  state = 'restarting'
+  render()
+  // Brief "restarting" state, then quitAndInstall (relaunch into the new build).
+  setTimeout(() => ipcRenderer.invoke(IPC_CONSTANTS.UPDATER_INSTALL), PREVIEW ? 1500 : 150)
 }
 
 function show(): void {
