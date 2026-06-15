@@ -114,10 +114,7 @@ jobs:
           node -e "const fs=require('fs');const f='electron-builder.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.productName=process.env.EB_PRODUCT_NAME;c.appId=process.env.EB_APP_ID;c.publish.releaseType=process.env.EB_RELEASE_TYPE;fs.writeFileSync(f,JSON.stringify(c,null,2));console.log('productName='+c.productName,'| appId='+c.appId,'| releaseType='+c.publish.releaseType);"
 
       - name: Build & publish to GitHub Release
-        # Publish to the PUBLIC releases repo (b2b-exam-releases) so the app can
-        # auto-update without a token (source repo stays private). Needs a PAT
-        # with contents:write on that repo, stored as the RELEASE_TOKEN secret.
         run: pnpm exec electron-builder ${{ matrix.eb_flag }} --publish always
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"

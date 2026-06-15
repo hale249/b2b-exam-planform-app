@@ -8,7 +8,7 @@
   "publish": {
     "provider": "github",
     "owner": "hale249",
-    "repo": "b2b-exam-releases"
+    "repo": "b2b-exam-planform-app"
   },
   "files": [
     "!**/.vscode/*",
