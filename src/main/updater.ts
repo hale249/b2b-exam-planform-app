@@ -6,6 +6,7 @@ import { app, BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
 import { applyUpdateChannel } from './updater-channel'
+import { APP_ICON } from './app-icon'
 
 // Force-update gate shown BEFORE the exam loads.
 //
@@ -36,20 +37,16 @@ const UPDATER_HTML =
         background:radial-gradient(800px 480px at 50% -6%,#eaf2ff 0%,#f6f9fc 60%,#f4f7fb 100%);
         color:#0f172a;display:flex;align-items:center;justify-content:center;
         user-select:none;-webkit-user-select:none}
-      .card{width:400px;max-width:88vw;background:#fff;border:1px solid #eef1f6;border-radius:28px;
-        box-shadow:0 30px 80px rgba(15,23,42,.12);padding:48px 44px 32px;text-align:center}
-      .icon{width:72px;height:72px;margin:0 auto 22px;border-radius:20px;
-        background:linear-gradient(135deg,#0071F9,#4f9bff);display:flex;align-items:center;
-        justify-content:center;animation:pulse 2.4s ease-in-out infinite}
-      @keyframes pulse{0%,100%{box-shadow:0 12px 26px rgba(0,113,249,.32),0 0 0 0 rgba(0,113,249,.16)}
-        50%{box-shadow:0 12px 26px rgba(0,113,249,.32),0 0 0 14px rgba(0,113,249,0)}}
-      .icon svg{width:36px;height:36px;fill:#fff}
+      .card{width:460px;max-width:90vw;background:#fff;border:1px solid #eef1f6;border-radius:30px;
+        box-shadow:0 34px 90px rgba(15,23,42,.13);padding:54px 50px 38px;text-align:center}
+      .icon{width:88px;height:88px;display:block;margin:0 auto 22px;border-radius:22px;
+        box-shadow:0 16px 34px rgba(0,113,249,.22);animation:pulse 2.6s ease-in-out infinite}
+      @keyframes pulse{0%,100%{box-shadow:0 16px 34px rgba(0,113,249,.22),0 0 0 0 rgba(0,113,249,.14)}
+        50%{box-shadow:0 16px 34px rgba(0,113,249,.22),0 0 0 16px rgba(0,113,249,0)}}
       h1{font-size:18px;font-weight:650;margin:0;letter-spacing:-.01em}
       .ver{font-size:13.5px;color:#64748b;margin:7px 0 0;min-height:18px}
       .dl{margin-top:26px}
-      .pct{font-size:46px;font-weight:700;line-height:1;letter-spacing:-.02em;
-        font-variant-numeric:tabular-nums;margin:0 0 18px}
-      .track{height:6px;border-radius:99px;background:#eef2f7;overflow:hidden;position:relative}
+      .track{height:8px;border-radius:99px;background:#eef2f7;overflow:hidden;position:relative}
       .fill{height:100%;width:0%;border-radius:99px;position:relative;
         background:linear-gradient(90deg,#0071F9,#5aa6ff);transition:width .3s cubic-bezier(.4,0,.2,1)}
       .fill::after{content:'';position:absolute;inset:0;
@@ -58,7 +55,9 @@ const UPDATER_HTML =
       @keyframes shine{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
       .track.indet .fill{width:40%!important;animation:indet 1.2s ease-in-out infinite}
       @keyframes indet{0%{margin-left:-42%}100%{margin-left:102%}}
-      .info{margin-top:13px;font-size:12.5px;color:#94a3b8;font-variant-numeric:tabular-nums;min-height:16px}
+      .meta{display:flex;justify-content:space-between;align-items:center;margin-top:12px;min-height:18px}
+      .pct{font-size:14px;font-weight:600;color:#0f172a;font-variant-numeric:tabular-nums}
+      .info{font-size:12.5px;color:#94a3b8;font-variant-numeric:tabular-nums}
       .spin{display:none;width:30px;height:30px;border:3px solid #e2e8f0;border-top-color:#0071F9;
         border-radius:50%;animation:spin .7s linear infinite;margin:10px auto 0}
       @keyframes spin{to{transform:rotate(360deg)}}
@@ -70,13 +69,12 @@ const UPDATER_HTML =
     </style></head>
     <body class="checking">
       <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24"><path d="M13 3h-2v8.59L8.21 8.79 6.79 10.2 12 15.41l5.21-5.21-1.42-1.41L13 11.59V3zM5 18h14v2H5z"/></svg></div>
+        <img class="icon" src="${APP_ICON}" alt="" />
         <h1 id="title">Checking for updates…</h1>
         <p class="ver" id="ver"></p>
         <div class="dl">
-          <div class="pct" id="pct">0%</div>
           <div class="track indet" id="track"><div class="fill" id="fill"></div></div>
-          <div class="info" id="info"></div>
+          <div class="meta"><span class="pct" id="pct">0%</span><span class="info" id="info"></span></div>
         </div>
         <div class="spin"></div>
         <p class="note">The app will restart automatically. Please do not turn off your device.</p>
