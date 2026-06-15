@@ -56,9 +56,13 @@ jobs:
           version: 10.26.1
 
       - name: Setup Node.js
+        # Node 22 (LTS): Electron 42's binary installer uses extract-zip@2.0.1,
+        # which silently crashes on Node 24 (mac/win) -> path.txt never written
+        # -> bytecode step fails. Node only orchestrates here; bytecode is still
+        # compiled by Electron's own V8, so this does not affect correctness.
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: pnpm
 
       - name: Create .env
