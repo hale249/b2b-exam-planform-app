@@ -102,12 +102,15 @@ jobs:
       - name: Set app identity per environment
         # Edit electron-builder.json via Node (reads process.env -> no shell
         # quoting issues with spaces in productName, unlike passing -c.* on CLI).
+        # releaseType per env (VS Code model): dev/stg auto-publish as prerelease
+        # (testers auto-update); prod stays draft (a human reviews then Publishes).
         shell: bash
         env:
           EB_PRODUCT_NAME: ${{ startsWith(github.ref_name, 'dev_') && 'Prep Exam Dev' || startsWith(github.ref_name, 'stg_') && 'Prep Exam STG' || 'Prep Exam Platform' }}
           EB_APP_ID: ${{ startsWith(github.ref_name, 'dev_') && 'com.prepedu.exam-platform.dev' || startsWith(github.ref_name, 'stg_') && 'com.prepedu.exam-platform.stg' || 'com.prepedu.exam-platform' }}
+          EB_RELEASE_TYPE: ${{ (startsWith(github.ref_name, 'dev_') || startsWith(github.ref_name, 'stg_')) && 'prerelease' || 'draft' }}
         run: |
-          node -e "const fs=require('fs');const f='electron-builder.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.productName=process.env.EB_PRODUCT_NAME;c.appId=process.env.EB_APP_ID;fs.writeFileSync(f,JSON.stringify(c,null,2));console.log('productName='+c.productName,'| appId='+c.appId);"
+          node -e "const fs=require('fs');const f='electron-builder.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.productName=process.env.EB_PRODUCT_NAME;c.appId=process.env.EB_APP_ID;c.publish.releaseType=process.env.EB_RELEASE_TYPE;fs.writeFileSync(f,JSON.stringify(c,null,2));console.log('productName='+c.productName,'| appId='+c.appId,'| releaseType='+c.publish.releaseType);"
 
       - name: Build & publish to GitHub Release
         run: pnpm exec electron-builder ${{ matrix.eb_flag }} --publish always
