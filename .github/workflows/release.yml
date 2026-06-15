@@ -1,15 +1,5 @@
 name: Release
 
-# Tag PREFIX selects the environment, mapped to a Repository Secret holding
-# that env's .env (Settings > Secrets and variables > Actions):
-#   dev_v1.0.0  -> ENV_FILE_DEV   (branch develop)
-#   stg_v1.0.0  -> ENV_FILE_STG   (branch staging)
-#   v1.0.0      -> ENV_FILE_PROD  (branch main)
-# (Repository secrets are used instead of GitHub Environments, which are not
-#  available on private repos without a paid plan.)
-# Builds mac + windows + linux and publishes a GitHub Release for the tag.
-# The app version is taken FROM THE TAG (e.g. v1.2.0 / dev_v1.2.0 -> 1.2.0),
-# overriding package.json at build time — no need to bump package.json.
 on:
   push:
     tags:
@@ -66,8 +56,6 @@ jobs:
           version: 10.26.1
 
       - name: Setup Node.js
-        # Node 22: Electron 42's extract-zip@2.0.1 crashes on Node 24 (mac/win).
-        # Node only orchestrates; bytecode is compiled by Electron's own V8.
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -107,7 +95,11 @@ jobs:
           ELECTRON_RUN_AS_NODE: "1"
 
       - name: Build & publish to GitHub Release
-        run: pnpm exec electron-builder ${{ matrix.eb_flag }} --publish always
+        # Per-env productName + appId so installed apps are distinguishable and
+        # dev/stg/prod can be installed side by side (different bundle id).
+        run: pnpm exec electron-builder ${{ matrix.eb_flag }} -c.productName="${{ env.EB_PRODUCT_NAME }}" -c.appId="${{ env.EB_APP_ID }}" --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          EB_PRODUCT_NAME: ${{ startsWith(github.ref_name, 'dev_') && 'Prep Exam Dev' || startsWith(github.ref_name, 'stg_') && 'Prep Exam STG' || 'Prep Exam Platform' }}
+          EB_APP_ID: ${{ startsWith(github.ref_name, 'dev_') && 'com.prepedu.exam-platform.dev' || startsWith(github.ref_name, 'stg_') && 'com.prepedu.exam-platform.stg' || 'com.prepedu.exam-platform' }}
