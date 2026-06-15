@@ -157,17 +157,18 @@ export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void =
 
   autoUpdater.removeAllListeners()
 
-  autoUpdater.on('checking-for-update', () => ui(`window.upd&&window.upd.status('checking')`))
-
+  // Silent check: while checking we show NOTHING (window stays hidden). The
+  // updater screen is loaded ONLY when an update actually exists — so a normal
+  // launch with no update never flashes the update screen.
   autoUpdater.on('update-available', (info) => {
-    // An update is now downloading. Cancel the "server too slow" backstop: it
-    // only guards the *checking* phase. If it fired mid-download we'd drop the
-    // student into the exam and then relaunch under them when the download
-    // finishes. Once a download is confirmed in progress we commit to finishing
-    // and installing it here on the gate screen, never inside the exam.
+    // An update exists -> now show the updater screen and let it download.
+    // Cancel the "server too slow" backstop: it only guards the checking phase.
     clearTimeout(timer)
-    const v = JSON.stringify(String(info?.version || ''))
-    ui(`window.upd&&window.upd.status('downloading',${v})`)
+    const version = String(info?.version || '')
+    win.loadURL(UPDATER_HTML)
+    win.webContents.once('did-finish-load', () => {
+      ui(`window.upd&&window.upd.status('downloading',${JSON.stringify(version)})`)
+    })
   })
 
   autoUpdater.on('update-not-available', () => {
@@ -212,13 +213,10 @@ export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void =
     proceed()
   })
 
-  win.loadURL(UPDATER_HTML)
-  // Start the check only once the updater screen is on-screen, so the very first
-  // events (checking/available) have a live DOM to render into.
-  win.webContents.once('did-finish-load', () => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error('[Updater] checkForUpdates failed — entering exam:', err)
-      proceed()
-    })
+  // Check silently in the background — no UI yet. The window stays hidden until
+  // either an update is found (updater screen loads) or we proceed to the exam.
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error('[Updater] checkForUpdates failed — entering exam:', err)
+    proceed()
   })
 }
