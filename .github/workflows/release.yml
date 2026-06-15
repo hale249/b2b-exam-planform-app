@@ -94,12 +94,18 @@ jobs:
         env:
           ELECTRON_RUN_AS_NODE: "1"
 
+      - name: Set app identity per environment
+        # Edit electron-builder.json via Node (reads process.env -> no shell
+        # quoting issues with spaces in productName, unlike passing -c.* on CLI).
+        shell: bash
+        env:
+          EB_PRODUCT_NAME: ${{ startsWith(github.ref_name, 'dev_') && 'Prep Exam Dev' || startsWith(github.ref_name, 'stg_') && 'Prep Exam STG' || 'Prep Exam Platform' }}
+          EB_APP_ID: ${{ startsWith(github.ref_name, 'dev_') && 'com.prepedu.exam-platform.dev' || startsWith(github.ref_name, 'stg_') && 'com.prepedu.exam-platform.stg' || 'com.prepedu.exam-platform' }}
+        run: |
+          node -e "const fs=require('fs');const f='electron-builder.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.productName=process.env.EB_PRODUCT_NAME;c.appId=process.env.EB_APP_ID;fs.writeFileSync(f,JSON.stringify(c,null,2));console.log('productName='+c.productName,'| appId='+c.appId);"
+
       - name: Build & publish to GitHub Release
-        # Per-env productName + appId so installed apps are distinguishable and
-        # dev/stg/prod can be installed side by side (different bundle id).
-        run: pnpm exec electron-builder ${{ matrix.eb_flag }} -c.productName="${{ env.EB_PRODUCT_NAME }}" -c.appId="${{ env.EB_APP_ID }}" --publish always
+        run: pnpm exec electron-builder ${{ matrix.eb_flag }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          EB_PRODUCT_NAME: ${{ startsWith(github.ref_name, 'dev_') && 'Prep Exam Dev' || startsWith(github.ref_name, 'stg_') && 'Prep Exam STG' || 'Prep Exam Platform' }}
-          EB_APP_ID: ${{ startsWith(github.ref_name, 'dev_') && 'com.prepedu.exam-platform.dev' || startsWith(github.ref_name, 'stg_') && 'com.prepedu.exam-platform.stg' || 'com.prepedu.exam-platform' }}
