@@ -37,8 +37,8 @@ const UPDATER_HTML =
         background:radial-gradient(800px 480px at 50% -6%,#eaf2ff 0%,#f6f9fc 60%,#f4f7fb 100%);
         color:#0f172a;display:flex;align-items:center;justify-content:center;
         user-select:none;-webkit-user-select:none}
-      .card{width:460px;max-width:90vw;background:#fff;border:1px solid #eef1f6;border-radius:30px;
-        box-shadow:0 34px 90px rgba(15,23,42,.13);padding:54px 50px 38px;text-align:center}
+      .card{width:600px;max-width:92vw;background:#fff;border:1px solid #eef1f6;border-radius:30px;
+        box-shadow:0 34px 90px rgba(15,23,42,.13);padding:58px 64px 42px;text-align:center}
       .icon{width:88px;height:88px;display:block;margin:0 auto 22px;border-radius:22px;
         box-shadow:0 16px 34px rgba(0,113,249,.22);animation:pulse 2.6s ease-in-out infinite}
       @keyframes pulse{0%,100%{box-shadow:0 16px 34px rgba(0,113,249,.22),0 0 0 0 rgba(0,113,249,.14)}
