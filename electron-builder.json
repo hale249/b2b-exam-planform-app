@@ -49,6 +49,7 @@
     "gatekeeperAssess": false,
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
+    "artifactName": "${name}-${version}-${arch}.${ext}",
     "extendInfo": {
       "NSMicrophoneUsageDescription": "Application needs microphone access for the exam.",
       "NSCameraUsageDescription": "Application needs camera access for the exam.",
