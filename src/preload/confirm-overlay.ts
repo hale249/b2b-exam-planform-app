@@ -1,5 +1,7 @@
 import { ipcRenderer } from 'electron'
 
+import { IPC_CONSTANTS } from '../shared/ipc-channels'
+
 interface ConfirmOptions {
   id: string
   icon: string
@@ -180,17 +182,19 @@ function showConfirm(options: ConfirmOptions): void {
     }
     overlay!.style.opacity = '0'
     card.classList.remove('show')
-    setTimeout(() => { overlay!.style.display = 'none' }, 200)
+    setTimeout(() => {
+      overlay!.style.display = 'none'
+    }, 200)
   }
 
   const confirm = () => {
     cleanup()
-    ipcRenderer.send('confirm-response', { id: options.id, confirmed: true })
+    ipcRenderer.send(IPC_CONSTANTS.CONFIRM_RESPONSE, { id: options.id, confirmed: true })
   }
 
   const cancel = () => {
     cleanup()
-    ipcRenderer.send('confirm-response', { id: options.id, confirmed: false })
+    ipcRenderer.send(IPC_CONSTANTS.CONFIRM_RESPONSE, { id: options.id, confirmed: false })
   }
 
   okBtn.onclick = confirm
@@ -217,6 +221,6 @@ function showConfirm(options: ConfirmOptions): void {
   }, 200)
 }
 
-ipcRenderer.on('show-confirm', (_event, options: ConfirmOptions) => {
+ipcRenderer.on(IPC_CONSTANTS.SHOW_CONFIRM, (_event, options: ConfirmOptions) => {
   showConfirm(options)
 })

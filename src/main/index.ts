@@ -1,7 +1,24 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, session, systemPreferences } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, session } from 'electron'
 import { join } from 'path'
+import { armExamLock, disarmExamLock } from './exam-lock'
 import { startProcessMonitor, stopProcessMonitor } from './handlers/process-blocker'
 import { registerIpcHandlers } from './handlers/ipc'
+import {
+  initSecurityLock,
+  isSecurityBlockActive,
+  setMultipleDisplaysActive,
+  suppressFullscreenRequests
+} from './security-lock'
+import {
+  initCrashRecovery,
+  noteSuccessfulLoad,
+  recoverRenderer,
+  relaunchWithGuard,
+  showOfflineScreen
+} from './crash-recovery'
+import { runUpdateGate } from './updater'
+import { registerManualUpdater } from './manual-updater'
+import { IPC_CONSTANTS } from '../shared/ipc-channels'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
 const APP_NAME = import.meta.env.VITE_APP_NAME
@@ -10,6 +27,16 @@ let mainWindow: BrowserWindow | null = null
 let allowQuit = false
 let forceQuit = false
 let pendingQuitConfirmId: string | null = null
+
+// Force the exam window in front of every other app (Chrome, etc.). A plain
+// show()/focus() does not steal focus from whatever app is currently active —
+// especially on macOS — but app.focus({ steal: true }) + moveTop() do.
+const bringToFront = (): void => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (process.platform === 'darwin') app.focus({ steal: true })
+  mainWindow.moveTop()
+  mainWindow.focus()
+}
 
 const createWindow = (): void => {
   const isProduction = app.isPackaged
@@ -42,7 +69,7 @@ const createWindow = (): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const id = `quit_${Date.now()}`
       pendingQuitConfirmId = id
-      mainWindow.webContents.send('show-confirm', {
+      mainWindow.webContents.send(IPC_CONSTANTS.SHOW_CONFIRM, {
         id,
         icon: '',
         iconColor: '',
@@ -63,52 +90,126 @@ const createWindow = (): void => {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
-  // When in kiosk/exam mode: detect blur, force focus back, notify renderer
+  // When in kiosk/exam mode: detect blur, force focus back, notify renderer.
+  // While a security violation is active we let the window lose focus so the
+  // student can switch to the prohibited app and close it.
   mainWindow.on('blur', () => {
+    if (isSecurityBlockActive()) return
     if (mainWindow && !mainWindow.isDestroyed() && !forceQuit && mainWindow.isKiosk()) {
-      mainWindow.webContents.send('tab-violation')
-      setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isKiosk()) {
-          mainWindow.focus()
-        }
-      }, 100)
+      mainWindow.webContents.send(IPC_CONSTANTS.TAB_VIOLATION)
+      // Pull focus back to the exam. On macOS Cmd+Tab is OS-reserved and can't be
+      // disabled, and a plain focus() won't yank the app in front of whatever the
+      // student switched to — app.focus({ steal: true }) + moveTop() do. Run it
+      // immediately and again once the app-switch settles.
+      const refocus = (): void => {
+        if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isKiosk()) return
+        bringToFront()
+      }
+      refocus()
+      setTimeout(refocus, 100)
     }
   })
 
   mainWindow.setContentProtection(true)
 
-  // Only show window after EXAM_URL is fully loaded (no white flash)
+  // Only show window after EXAM_URL is fully loaded (no white flash).
+  // Then force it in front: the student may have switched to another app
+  // (e.g. Chrome) while the exam was loading.
   mainWindow.webContents.once('did-finish-load', () => {
     mainWindow!.setTitle(APP_NAME)
     mainWindow!.maximize()
     mainWindow!.show()
+    bringToFront()
+    // Re-assert once the show/maximize settles — macOS can give focus back to
+    // the previously active app right after the first attempt.
+    setTimeout(bringToFront, 150)
   })
 
-  // Show window on load failure so it's not invisible forever
-  mainWindow.webContents.on('did-fail-load', (_event, _code, description) => {
-    console.error('[LoadError]:', description)
+  // Retry loading the exam on transient failures (e.g. flaky network) with
+  // backoff, instead of leaving the student on a dead page.
+  let loadRetries = 0
+  const MAX_LOAD_RETRIES = 5
+  // Chromium net error ranges: -1xx = connection-level, -8xx = DNS. Both mean
+  // "no network", not a broken app: show the offline screen immediately
+  // (a failed FIRST load otherwise leaves the window pure white) and retry
+  // forever — when the proctor fixes the Wi-Fi the exam must come back on its
+  // own. The capped-retries → recovery path is reserved for real app errors.
+  const isNetworkError = (code: number): boolean =>
+    (code <= -100 && code > -200) || (code <= -800 && code > -900)
+
+  mainWindow.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
+    // -3 = ERR_ABORTED (our own redirects); only care about the main frame.
+    if (!isMainFrame || code === -3) return
+    console.error('[LoadError]:', code, description)
+
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.setTitle(APP_NAME)
       mainWindow.maximize()
       mainWindow.show()
+      bringToFront()
+    }
+
+    if (isNetworkError(code)) {
+      showOfflineScreen()
+      setTimeout(() => mainWindow?.loadURL(EXAM_URL), 5_000)
+      return
+    }
+
+    if (loadRetries < MAX_LOAD_RETRIES) {
+      loadRetries++
+      const delay = Math.min(1000 * loadRetries, 5000)
+      setTimeout(() => mainWindow?.loadURL(EXAM_URL), delay)
+    } else {
+      recoverRenderer()
     }
   })
 
-  // Re-apply content protection after every page load
   mainWindow.webContents.on('did-finish-load', () => {
+    // Re-apply content protection after every page load.
     mainWindow?.setContentProtection(true)
+    // Only a successful EXAM load resets the crash guards. The recovery/fatal
+    // screens are data: URLs and fire did-finish-load too — counting them as
+    // success would wipe the loop guards and recover forever instead of ever
+    // reaching the fatal screen.
+    if (!mainWindow?.webContents.getURL().startsWith(EXAM_URL)) return
+    loadRetries = 0
+    noteSuccessfulLoad()
+  })
+
+  // Renderer crashed ("Aw, snap") — recover unless it exited cleanly.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Crash] render-process-gone:', details.reason, details.exitCode)
+    if (details.reason === 'clean-exit') return
+    recoverRenderer()
+  })
+
+  // Window hung — force a reload to kill the stuck renderer.
+  mainWindow.on('unresponsive', () => {
+    console.error('[Crash] window unresponsive — recovering')
+    recoverRenderer()
+  })
+  mainWindow.on('responsive', () => {
+    console.warn('[Crash] window responsive again')
   })
 
   mainWindow.on('page-title-updated', (e) => {
     e.preventDefault()
   })
 
-  mainWindow.loadURL(EXAM_URL)
+  // Force-update gate: show the updater screen and only navigate to the exam
+  // once it clears (no update / error / timeout). If an update is found it
+  // downloads, installs and relaunches — no student ever runs a stale build.
+  // In dev (unpackaged) the gate falls through to the exam immediately.
+  runUpdateGate(mainWindow, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(EXAM_URL)
+  })
 
   if (!isProduction) {
     mainWindow.webContents.openDevTools()
   }
 
+  initSecurityLock(() => mainWindow)
+  initCrashRecovery(() => mainWindow, EXAM_URL)
   startProcessMonitor(mainWindow)
   startDisplayMonitor(mainWindow)
 }
@@ -118,7 +219,8 @@ let displayIntervalId: ReturnType<typeof setInterval> | null = null
 const checkDisplayCount = (win: BrowserWindow): void => {
   if (win.isDestroyed() || win.webContents.isDestroyed()) return
   const displays = screen.getAllDisplays()
-  win.webContents.send('display-count', displays.length)
+  setMultipleDisplaysActive(displays.length > 1)
+  win.webContents.send(IPC_CONSTANTS.DISPLAY_COUNT, displays.length)
 }
 
 const startDisplayMonitor = (win: BrowserWindow): void => {
@@ -140,6 +242,12 @@ const startDisplayMonitor = (win: BrowserWindow): void => {
 
 // Disable macOS window restore dialog
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
+// Never touch the real macOS Keychain ("Chromium Safe Storage") — avoids the
+// system password prompt on first launch. Cookie encryption is also disabled
+// via the enableCookieEncryption fuse in electron-builder.json.
+if (process.platform === 'darwin') {
+  app.commandLine.appendSwitch('use-mock-keychain')
+}
 app.on('will-finish-launching', () => {
   app.on('open-file', (event) => event.preventDefault())
 })
@@ -152,14 +260,17 @@ if (!gotTheLock) {
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
+      bringToFront()
     }
   })
 }
 
 registerIpcHandlers()
+// User-initiated update flow (batch screen): the renderer checks/downloads/installs
+// on demand, separate from the startup force-update gate.
+registerManualUpdater(() => mainWindow)
 
-ipcMain.handle('allow-quit', () => {
+ipcMain.handle(IPC_CONSTANTS.ALLOW_QUIT, () => {
   allowQuit = true
 })
 
@@ -168,22 +279,40 @@ app.on('before-quit', () => {
   forceQuit = true
 })
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   if (!gotTheLock) return
 
-  // Request microphone permission on macOS
-  if (process.platform === 'darwin') {
-    const status = systemPreferences.getMediaAccessStatus('microphone')
-    if (status === 'not-determined') {
-      await systemPreferences.askForMediaAccess('microphone')
-    }
+  // A build without .env bakes `undefined` into EXAM_URL and loadURL(undefined)
+  // throws at startup — in production that relaunch-loops a dead white app.
+  // Fail loudly and immediately instead.
+  if (!EXAM_URL || !/^https?:\/\//.test(EXAM_URL)) {
+    dialog.showErrorBox(
+      'Configuration error',
+      'VITE_EXAM_URL is missing or invalid — the app was built without a valid .env file.'
+    )
+    app.exit(1)
+    return
   }
 
-  createWindow()
-  registerBlockedShortcuts()
-
-  // Allow media permissions
-  const allowedPermissions = ['clipboard-read', 'clipboard-sanitized-write', 'media', 'microphone', 'audioCapture', 'videoCapture']
+  // Auto-allow the media permissions the exam needs. Register the handlers
+  // BEFORE the window loads the exam URL — otherwise an early getUserMedia call
+  // during page load can hit Electron's default behaviour and pop a permission
+  // prompt even though access is already granted.
+  //
+  // We do NOT pre-ask for the microphone at startup: macOS shows its own one-time
+  // system prompt the first time getUserMedia actually runs (i.e. when entering the
+  // Speaking skill). If the user denied it, the WEB app already detects the
+  // NotAllowedError and routes to its own mic-permission-guide page (with an
+  // "Open Settings" button), so the desktop side just grants and stays out of the
+  // way — no native dialog of our own.
+  const allowedPermissions = [
+    'clipboard-read',
+    'clipboard-sanitized-write',
+    'media',
+    'microphone',
+    'audioCapture',
+    'videoCapture'
+  ]
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
     return allowedPermissions.includes(permission)
   })
@@ -191,12 +320,23 @@ app.whenReady().then(async () => {
     callback(allowedPermissions.includes(permission))
   })
 
+  createWindow()
+  registerBlockedShortcuts()
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
 })
+
+// Leave the exam lockdown: undo kiosk + the always-on-top / all-Spaces flags
+// applied when entering fullscreen, so the window behaves normally afterwards.
+// Also cancels any in-flight arm so the lock can't re-engage afterwards.
+const exitExamLock = (): void => {
+  if (!mainWindow) return
+  disarmExamLock(mainWindow)
+}
 
 const registerBlockedShortcuts = (): void => {
   globalShortcut.register('PrintScreen', () => {})
@@ -206,15 +346,25 @@ const registerBlockedShortcuts = (): void => {
   globalShortcut.register('CommandOrControl+Control+Shift+3', () => {})
   globalShortcut.register('CommandOrControl+Control+Shift+4', () => {})
 
-  // Block Alt+Tab / Cmd+Tab
-  globalShortcut.register('Alt+Tab', () => {})
-  globalShortcut.register('CommandOrControl+Tab', () => {})
+  // Block Alt+Tab / Cmd+Tab. NOTE: on macOS Cmd+Tab (and Mission Control's
+  // Control+Arrow) are OS-reserved — register() returns false and the switcher
+  // still works. We log that so it's visible; the blur→refocus trap above is what
+  // actually enforces the lockdown on macOS.
+  const blockShortcut = (accelerator: string): void => {
+    if (!globalShortcut.register(accelerator, () => {})) {
+      console.warn(
+        `[Lockdown] Could not block "${accelerator}" (OS-reserved) — relying on the focus-trap instead.`
+      )
+    }
+  }
+  blockShortcut('Alt+Tab')
+  blockShortcut('CommandOrControl+Tab')
 
   // Block Mission Control / Exposé shortcuts
-  globalShortcut.register('Control+Up', () => {})
-  globalShortcut.register('Control+Down', () => {})
-  globalShortcut.register('Control+Left', () => {})
-  globalShortcut.register('Control+Right', () => {})
+  blockShortcut('Control+Up')
+  blockShortcut('Control+Down')
+  blockShortcut('Control+Left')
+  blockShortcut('Control+Right')
 
   // Custom confirm dialog via renderer overlay
   const pendingConfirms = new Map<string, () => void>()
@@ -223,33 +373,64 @@ const registerBlockedShortcuts = (): void => {
 
   let escCooldownUntil = 0
 
-  ipcMain.on('confirm-response', (_event, { id, confirmed }: { id: string; confirmed: boolean }) => {
+  // Bypass the page's beforeunload for a user-confirmed navigation. One
+  // permanent listener + a flag (instead of adding a listener per confirm)
+  // so repeated confirms don't accumulate listeners. Disarmed again once the
+  // navigation lands (see did-finish-load below).
+  let bypassUnloadArmed = false
+  mainWindow?.webContents.on('will-prevent-unload', (event) => {
+    if (bypassUnloadArmed) event.preventDefault()
+  })
+  const bypassUnload = (): void => {
+    bypassUnloadArmed = true
+  }
+
+  // If the page navigates/reloads while a confirm overlay is open (e.g. the
+  // web app redirects on its own), the overlay context is gone and
+  // confirm-response never arrives — without this reset isConfirmShowing
+  // would stay true and every confirm-gated shortcut (Esc, F11, reload, home)
+  // would be dead until the app restarts.
+  mainWindow?.webContents.on('did-finish-load', () => {
     isConfirmShowing = false
-    // Cooldown to prevent Esc from immediately reopening confirm
-    escCooldownUntil = Date.now() + 500
-    // Handle quit confirm
-    if (id === pendingQuitConfirmId) {
-      pendingQuitConfirmId = null
-      if (confirmed) {
-        forceQuit = true
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.destroy()
-        }
-        app.quit()
-      }
-      return
-    }
-    // Handle other confirms (reload, go home, fullscreen, esc)
-    if (confirmed) {
-      const action = pendingConfirms.get(id)
-      action?.()
-    }
-    pendingConfirms.delete(id)
+    pendingConfirms.clear()
+    bypassUnloadArmed = false
   })
 
+  ipcMain.on(
+    IPC_CONSTANTS.CONFIRM_RESPONSE,
+    (_event, { id, confirmed }: { id: string; confirmed: boolean }) => {
+      isConfirmShowing = false
+      // Cooldown to prevent Esc from immediately reopening confirm
+      escCooldownUntil = Date.now() + 500
+      // Handle quit confirm
+      if (id === pendingQuitConfirmId) {
+        pendingQuitConfirmId = null
+        if (confirmed) {
+          forceQuit = true
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.destroy()
+          }
+          app.quit()
+        }
+        return
+      }
+      // Handle other confirms (reload, go home, fullscreen, esc)
+      if (confirmed) {
+        const action = pendingConfirms.get(id)
+        action?.()
+      }
+      pendingConfirms.delete(id)
+    }
+  )
+
   const showConfirm = (options: {
-    icon: string; iconColor: string; title: string; message: string
-    confirmLabel: string; confirmColor: string; cancelLabel: string
+    icon: string
+    iconColor: string
+    title: string
+    message: string
+    confirmLabel: string
+    confirmColor: string
+    cancelLabel: string
     onConfirm: () => void
   }) => {
     if (!mainWindow || isConfirmShowing) return
@@ -257,13 +438,7 @@ const registerBlockedShortcuts = (): void => {
     const id = `confirm_${++confirmCounter}`
     pendingConfirms.set(id, options.onConfirm)
     const { onConfirm: _, ...sendOptions } = options
-    mainWindow.webContents.send('show-confirm', { id, ...sendOptions })
-  }
-
-  const bypassUnload = () => {
-    mainWindow?.webContents.on('will-prevent-unload', (event) => {
-      event.preventDefault()
-    })
+    mainWindow.webContents.send(IPC_CONSTANTS.SHOW_CONFIRM, { id, ...sendOptions })
   }
 
   // Reload shortcuts
@@ -278,7 +453,7 @@ const registerBlockedShortcuts = (): void => {
       cancelLabel: 'Cancel',
       onConfirm: () => {
         bypassUnload()
-        if (mainWindow?.isKiosk()) mainWindow.setKiosk(false)
+        exitExamLock()
         if (ignoreCache) {
           mainWindow?.webContents.reloadIgnoringCache()
         } else {
@@ -297,25 +472,34 @@ const registerBlockedShortcuts = (): void => {
       icon: '🏠',
       iconColor: '#f59e0b',
       title: 'Return to Home',
-      message: 'Are you sure you want to go back to the home page? Your current test session will be interrupted.',
+      message:
+        'Are you sure you want to go back to the home page? Your current test session will be interrupted.',
       confirmLabel: 'Go to Home',
       confirmColor: '#d97706',
       cancelLabel: 'Stay',
       onConfirm: () => {
         bypassUnload()
-        if (mainWindow?.isKiosk()) mainWindow.setKiosk(false)
+        exitExamLock()
         mainWindow?.loadURL(EXAM_URL)
       }
     })
   })
-  // Esc in fullscreen → confirm → exit fullscreen + reload (auto redirects to dashboard)
+  // Esc in fullscreen → confirm → exit fullscreen + go to the home page.
+  // Do NOT reload(): reloading keeps the in-exam URL, and the web app re-enters
+  // fullscreen as soon as it sees the exam still in progress.
   mainWindow?.webContents.on('before-input-event', (event, input) => {
     // Block Esc from reaching renderer when confirm is showing
     if (input.key === 'Escape' && input.type === 'keyDown' && isConfirmShowing) {
       event.preventDefault()
       return
     }
-    if (input.key === 'Escape' && input.type === 'keyDown' && mainWindow?.isKiosk() && !isConfirmShowing && Date.now() > escCooldownUntil) {
+    if (
+      input.key === 'Escape' &&
+      input.type === 'keyDown' &&
+      mainWindow?.isKiosk() &&
+      !isConfirmShowing &&
+      Date.now() > escCooldownUntil
+    ) {
       event.preventDefault()
       showConfirm({
         icon: '',
@@ -327,8 +511,11 @@ const registerBlockedShortcuts = (): void => {
         cancelLabel: 'Cancel',
         onConfirm: () => {
           bypassUnload()
-          mainWindow?.setKiosk(false)
-          mainWindow?.webContents.reload()
+          exitExamLock()
+          // Swallow any in-flight set-fullscreen(true) from the page being
+          // torn down so it can't re-arm kiosk right after the user exited.
+          suppressFullscreenRequests(1_000)
+          mainWindow?.loadURL(EXAM_URL)
         }
       })
     }
@@ -347,11 +534,11 @@ const registerBlockedShortcuts = (): void => {
         confirmColor: '#2563eb',
         cancelLabel: 'Cancel',
         onConfirm: () => {
-          mainWindow?.setKiosk(false)
+          exitExamLock()
         }
       })
     } else {
-      mainWindow.setKiosk(true)
+      armExamLock(mainWindow)
     }
   })
 
@@ -379,18 +566,13 @@ app.on('window-all-closed', () => {
 // --- Process event handlers (production only) ---
 
 if (app.isPackaged) {
-  const relaunchApp = (): void => {
-    app.relaunch()
-    app.exit(0)
-  }
-
   process.on('uncaughtException', (err) => {
     console.error('[ProcessEvent] uncaughtException:', err)
-    relaunchApp()
+    relaunchWithGuard()
   })
 
   process.on('SIGTERM', () => {
-    console.info('[ProcessEvent] SIGTERM')
-    relaunchApp()
+    console.warn('[ProcessEvent] SIGTERM')
+    relaunchWithGuard()
   })
 }

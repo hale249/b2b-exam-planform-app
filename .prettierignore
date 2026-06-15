@@ -1,0 +1,7 @@
+dist
+dist-electron
+build
+node_modules
+resources
+pnpm-lock.yaml
+*.log

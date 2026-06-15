@@ -27,3 +27,7 @@ dist-electron
 
 *.tsbuildinfo
 .env
+dev-app-update.yml
+
+# Use pnpm, not npm
+package-lock.json

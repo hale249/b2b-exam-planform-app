@@ -5,6 +5,11 @@
     "buildResources": "resources",
     "output": "dist"
   },
+  "publish": {
+    "provider": "github",
+    "owner": "hale249",
+    "repo": "b2b-exam-planform-app"
+  },
   "files": [
     "!**/.vscode/*",
     "!src/*",
@@ -15,6 +20,14 @@
   "asarUnpack": [
     "resources/**"
   ],
+  "electronFuses": {
+    "runAsNode": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "enableCookieEncryption": false,
+    "onlyLoadAppFromAsar": true,
+    "enableEmbeddedAsarIntegrityValidation": true
+  },
   "win": {
     "target": [
       {
@@ -45,6 +58,10 @@
       {
         "target": "dmg",
         "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
       }
     ]
   },
@@ -56,9 +73,10 @@
       }
     ],
     "maintainer": "prepedu.com",
-    "category": "Education"
+    "category": "Education",
+    "artifactName": "${name}-${version}.${ext}"
   },
   "dmg": {
-    "artifactName": "${name}-${version}.${ext}"
+    "artifactName": "${name}-${version}-${arch}.${ext}"
   }
 }
