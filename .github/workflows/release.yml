@@ -8,7 +8,8 @@ name: Release
 # (Repository secrets are used instead of GitHub Environments, which are not
 #  available on private repos without a paid plan.)
 # Builds mac + windows + linux and publishes a GitHub Release for the tag.
-# X.Y.Z should match package.json version.
+# The app version is taken FROM THE TAG (e.g. v1.2.0 / dev_v1.2.0 -> 1.2.0),
+# overriding package.json at build time — no need to bump package.json.
 on:
   push:
     tags:
@@ -71,6 +72,17 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#dev_}"
+          version="${version#stg_}"
+          version="${version#v}"
+          echo "Tag $tag -> version $version"
+          npm pkg set version="$version"
 
       - name: Create .env
         shell: bash
