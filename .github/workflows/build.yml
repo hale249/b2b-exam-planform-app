@@ -27,10 +27,9 @@ jobs:
             platform: win
             build_cmd: pnpm run build:win
 
-          # Bo comment neu muon build them Linux (AppImage)
-          # - os: ubuntu-latest
-          #   platform: linux
-          #   build_cmd: pnpm run build:linux
+          - os: ubuntu-latest
+            platform: linux
+            build_cmd: pnpm run build:linux
 
     env:
       # Bytecode runs Electron headless -> run-as-node (still uses Electron's V8).
@@ -41,6 +40,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Electron runtime libs (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2t64 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libatspi2.0-0t64 \
+          || sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libatspi2.0-0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
