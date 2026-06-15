@@ -1,0 +1,98 @@
+name: Test Build
+
+# Build de kiem thu (mac + windows), KHONG publish len GCS.
+# Bam thu cong tu tab Actions -> Test Build -> Run workflow,
+# hoac tu dong khi push len cac nhanh duoi day.
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+  workflow_dispatch:
+
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            build_cmd: pnpm run build:mac
+
+          - os: windows-latest
+            platform: win
+            build_cmd: pnpm run build:win
+
+          # Bo comment neu muon build them Linux (AppImage)
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   build_cmd: pnpm run build:linux
+
+    env:
+      # Bytecode compile (scripts/compile-bytecode.cjs) phai chay duoi Electron
+      # nhung tren CI headless -> chay nhu Node bang co nay (van dung V8 cua Electron).
+      ELECTRON_RUN_AS_NODE: "1"
+      # Khong ky code macOS khi chi build test.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # electron-builder.json co publish.url chua ${env.GCS_BUCKET}; set gia tri gia
+      # de cau hinh khong loi (khong thuc su publish trong workflow nay).
+      GCS_BUCKET: "local-dev"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Create .env
+        shell: bash
+        run: |
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            printf 'VITE_APP_NAME="Prep Exam Platform"\nVITE_EXAM_URL="http://localhost:3099"\n' > .env
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build app
+        # --publish never: tuyet doi khong day artifact len GCS o workflow test nay.
+        run: ${{ matrix.build_cmd }} -- --publish never
+
+      - name: Show build output
+        shell: bash
+        run: ls -lah dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepedu-exam-${{ matrix.platform }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: warn
