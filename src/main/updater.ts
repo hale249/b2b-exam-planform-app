@@ -32,62 +32,79 @@ const UPDATER_HTML =
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
       *{box-sizing:border-box}
       html,body{height:100%;margin:0}
-      body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-        background:radial-gradient(1200px 600px at 50% -10%,#eaf2ff 0%,#f7f9fc 45%,#f7f9fc 100%);
+      body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+        background:radial-gradient(900px 520px at 50% -8%,#e8f1ff 0%,#f5f8fc 55%,#f3f6fb 100%);
         color:#0f172a;display:flex;align-items:center;justify-content:center;
         user-select:none;-webkit-user-select:none}
-      .card{width:440px;max-width:88vw;background:#fff;border:1px solid #eef1f6;border-radius:20px;
-        box-shadow:0 20px 60px rgba(15,23,42,.08);padding:40px 36px;text-align:center}
-      .logo{width:64px;height:64px;margin:0 auto 22px;border-radius:18px;
-        background:linear-gradient(135deg,#0071F9,#3f96ff);display:flex;align-items:center;
-        justify-content:center;box-shadow:0 10px 24px rgba(0,113,249,.35)}
-      .logo svg{width:34px;height:34px;fill:#fff}
-      h1{font-size:19px;font-weight:650;margin:0 0 8px;letter-spacing:-.01em}
-      .sub{font-size:13.5px;color:#64748b;margin:0 0 26px;line-height:1.5;min-height:20px}
-      .sub b{color:#0071F9;font-weight:600}
-      .track{height:8px;border-radius:99px;background:#eef2f7;overflow:hidden;position:relative}
+      .card{width:430px;max-width:88vw;background:#fff;border:1px solid #eef1f6;border-radius:24px;
+        box-shadow:0 24px 70px rgba(15,23,42,.10);padding:46px 40px 34px;text-align:center}
+      .icon{width:76px;height:76px;margin:0 auto 24px;border-radius:22px;
+        background:linear-gradient(135deg,#0071F9,#4f9bff);display:flex;align-items:center;
+        justify-content:center;box-shadow:0 12px 28px rgba(0,113,249,.38),0 0 0 8px rgba(0,113,249,.06);
+        animation:float 3s ease-in-out infinite}
+      @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+      .icon svg{width:38px;height:38px;fill:#fff}
+      h1{font-size:21px;font-weight:700;margin:0 0 8px;letter-spacing:-.02em}
+      .sub{font-size:14px;color:#64748b;margin:0;line-height:1.55;min-height:22px}
+      .ver{display:none;margin:14px auto 0;padding:5px 14px;border-radius:99px;
+        background:#eff6ff;color:#0071F9;font-size:12.5px;font-weight:600;width:fit-content}
+      .wrap{margin-top:26px}
+      .track{height:10px;border-radius:99px;background:#eef2f7;overflow:hidden;position:relative}
       .fill{height:100%;width:0%;border-radius:99px;
-        background:linear-gradient(90deg,#0071F9,#5aa6ff);transition:width .25s ease}
-      .track.indet .fill{width:35%!important;animation:slide 1.1s ease-in-out infinite}
-      @keyframes slide{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
-      .meta{display:flex;justify-content:space-between;margin-top:12px;font-size:12px;
-        color:#94a3b8;font-variant-numeric:tabular-nums}
-      .meta .pct{color:#0f172a;font-weight:600}
-      .spin{display:none;width:20px;height:20px;border:2.5px solid #dbe7fb;border-top-color:#0071F9;
-        border-radius:50%;animation:spin .7s linear infinite;margin:2px auto 0}
+        background:linear-gradient(90deg,#0071F9,#5aa6ff);transition:width .3s ease;
+        box-shadow:0 0 12px rgba(0,113,249,.4)}
+      .track.indet .fill{width:38%!important;animation:slide 1.15s ease-in-out infinite}
+      @keyframes slide{0%{transform:translateX(-130%)}100%{transform:translateX(360%)}}
+      .meta{display:flex;justify-content:space-between;align-items:center;margin-top:13px;
+        font-variant-numeric:tabular-nums}
+      .meta .pct{color:#0f172a;font-weight:700;font-size:15px}
+      .meta .info{color:#94a3b8;font-size:12.5px}
+      .spin{display:none;width:26px;height:26px;border:3px solid #dbe7fb;border-top-color:#0071F9;
+        border-radius:50%;animation:spin .7s linear infinite;margin:6px auto 0}
       @keyframes spin{to{transform:rotate(360deg)}}
-      body.installing .track,body.installing .meta{display:none}
+      body.installing .wrap{display:none}
       body.installing .spin{display:block}
-      .foot{margin-top:28px;font-size:11px;color:#b6c0cf;letter-spacing:.02em}
+      .foot{margin-top:30px;font-size:11px;color:#b6c0cf;letter-spacing:.04em;text-transform:uppercase}
     </style></head>
     <body class="checking">
       <div class="card">
-        <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 3 1 8l11 5 9-4.09V14h2V8L12 3zM5 13.18v3.99L12 21l7-3.83v-3.99L12 17 5 13.18z"/></svg></div>
+        <div class="icon"><svg viewBox="0 0 24 24"><path d="M13 3h-2v8.59L8.21 8.79 6.79 10.2 12 15.41l5.21-5.21-1.42-1.41L13 11.59V3zM5 18h14v2H5z"/></svg></div>
         <h1 id="title">Checking for updates…</h1>
         <p class="sub" id="sub">Please wait a moment.</p>
-        <div class="track indet" id="track"><div class="fill" id="fill"></div></div>
-        <div class="meta"><span class="pct" id="pct">&nbsp;</span><span id="speed">&nbsp;</span></div>
+        <div class="ver" id="ver"></div>
+        <div class="wrap">
+          <div class="track indet" id="track"><div class="fill" id="fill"></div></div>
+          <div class="meta"><span class="pct" id="pct">&nbsp;</span><span class="info" id="info">&nbsp;</span></div>
+        </div>
         <div class="spin"></div>
         <div class="foot">PrepEdu Exam Platform</div>
       </div>
       <script>
-        var S={state:'checking',percent:0,version:'',bps:0};
-        function fmt(b){if(!b||b<=0)return '';
-          if(b>1048576)return (b/1048576).toFixed(1)+' MB/s';return Math.round(b/1024)+' KB/s';}
+        var S={state:'checking',percent:0,version:'',bps:0,tr:0,tot:0};
+        function spd(b){if(!b||b<=0)return '';
+          if(b>=1048576)return (b/1048576).toFixed(1)+' MB/s';return Math.max(1,Math.round(b/1024))+' KB/s';}
+        function mb(b){return (b/1048576).toFixed(1);}
         function render(){
           var t=document.getElementById('title'),s=document.getElementById('sub'),
-              tr=document.getElementById('track'),f=document.getElementById('fill'),
-              p=document.getElementById('pct'),sp=document.getElementById('speed');
+              v=document.getElementById('ver'),tr=document.getElementById('track'),
+              f=document.getElementById('fill'),p=document.getElementById('pct'),
+              inf=document.getElementById('info');
           if(!t)return;
           document.body.className=S.state;
+          v.style.display=S.version?'block':'none';
+          if(S.version)v.textContent='Version '+S.version;
           if(S.state==='checking'){
             t.textContent='Checking for updates…';s.textContent='Please wait a moment.';
-            tr.classList.add('indet');p.innerHTML='&nbsp;';sp.innerHTML='&nbsp;';
+            tr.classList.add('indet');p.innerHTML='&nbsp;';inf.innerHTML='&nbsp;';
           }else if(S.state==='downloading'){
             t.textContent='Downloading update';
-            s.innerHTML=S.version?('Version <b>'+S.version+'</b> • downloading…'):'Downloading…';
-            tr.classList.remove('indet');f.style.width=(S.percent||0).toFixed(0)+'%';
-            p.textContent=(S.percent||0).toFixed(0)+'%';sp.textContent=fmt(S.bps);
+            s.textContent='Downloading… please keep your network connected.';
+            tr.classList.remove('indet');
+            var pc=Math.max(0,Math.min(100,S.percent||0));
+            f.style.width=pc.toFixed(0)+'%';p.textContent=pc.toFixed(0)+'%';
+            var parts=[];var sp=spd(S.bps);if(sp)parts.push(sp);
+            if(S.tot>0)parts.push(mb(S.tr)+' / '+mb(S.tot)+' MB');
+            inf.textContent=parts.join('  •  ');
           }else if(S.state==='installing'){
             t.textContent='Installing update';
             s.textContent='The app will restart automatically. Please do not turn off your device.';
@@ -95,7 +112,8 @@ const UPDATER_HTML =
         }
         window.upd={
           status:function(st,v){S.state=st;if(v)S.version=v;render();},
-          progress:function(pc,b){S.state='downloading';S.percent=pc||0;S.bps=b||0;render();}
+          progress:function(pc,b,tr,tot){S.state='downloading';S.percent=pc||0;S.bps=b||0;
+            S.tr=tr||0;S.tot=tot||0;render();}
         };
         document.addEventListener('DOMContentLoaded',render);render();
       </script>
@@ -160,7 +178,9 @@ export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void =
   autoUpdater.on('download-progress', (p) => {
     const pct = Number(p?.percent) || 0
     const bps = Number(p?.bytesPerSecond) || 0
-    ui(`window.upd&&window.upd.progress(${pct},${bps})`)
+    const transferred = Number(p?.transferred) || 0
+    const total = Number(p?.total) || 0
+    ui(`window.upd&&window.upd.progress(${pct},${bps},${transferred},${total})`)
   })
 
   autoUpdater.on('update-downloaded', () => {
