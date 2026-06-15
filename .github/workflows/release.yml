@@ -1,13 +1,18 @@
 name: Release
 
-# Push a tag like v1.0.0 to build mac + windows + linux and publish them as a
-# GitHub Release (electron-builder uploads the installers + latest*.yml for
-# auto-update). The X.Y.Z in the tag should match package.json version.
-#   git tag v1.0.0 && git push github v1.0.0
+# Tag PREFIX selects the environment. Each maps to a GitHub Environment
+# (Settings > Environments) whose ENV_FILE secret holds that env's .env:
+#   dev-v1.0.0  -> dev        (branch develop)
+#   stg-v1.0.0  -> staging    (branch staging)
+#   v1.0.0      -> production (branch main)
+# Builds mac + windows + linux and publishes a GitHub Release for the tag.
+# X.Y.Z should match package.json version.
 on:
   push:
     tags:
       - "v*"
+      - "stg-v*"
+      - "dev-v*"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +26,7 @@ jobs:
   release:
     name: Build & Release (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
+    environment: ${{ startsWith(github.ref_name, 'dev-') && 'dev' || startsWith(github.ref_name, 'stg-') && 'staging' || 'production' }}
     strategy:
       fail-fast: false
       matrix:
