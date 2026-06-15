@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
 
 import { armExamLock, disarmExamLock } from '../exam-lock'
-import { checkBlockedApps } from '../services/process-blocker'
+import { clearExamContext, setAuthToken, setExamContext } from '../services/app-events'
+import { checkBlockedApps, reportBlockedApps } from '../services/process-blocker'
 import {
   isFullscreenSuppressed,
   setBlockedProcessesActive,
@@ -14,6 +15,19 @@ export const registerIpcHandlers = (): void => {
     return app.getVersion()
   })
 
+  ipcMain.handle(IPC_CONSTANTS.SET_EXAM_CONTEXT, (_event, batchCandidateId: number) => {
+    setExamContext(Number(batchCandidateId))
+  })
+
+  ipcMain.handle(IPC_CONSTANTS.CLEAR_EXAM_CONTEXT, () => {
+    clearExamContext()
+  })
+
+  // One-way from preload: the candidate's token read from the web's localStorage.
+  ipcMain.on(IPC_CONSTANTS.SET_AUTH_TOKEN, (_event, token: string) => {
+    setAuthToken(typeof token === 'string' ? token : '')
+  })
+
   ipcMain.handle(IPC_CONSTANTS.OPEN_EXTERNAL_URL, (_event, url: string) => {
     // The exam page is remote content — never pass through non-web schemes
     // (file://, smb://, ...) to the OS.
@@ -24,6 +38,7 @@ export const registerIpcHandlers = (): void => {
   ipcMain.handle(IPC_CONSTANTS.CHECK_BLOCKED_PROCESSES, async (event) => {
     const blocked = await checkBlockedApps()
     setBlockedProcessesActive(blocked.length > 0)
+    reportBlockedApps(blocked)
 
     if (blocked.length > 0) {
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -43,6 +58,7 @@ export const registerIpcHandlers = (): void => {
 
     setBlockedProcessesActive(blocked.length > 0)
     setMultipleDisplaysActive(displayCount > 1)
+    reportBlockedApps(blocked)
 
     const hasViolation = blocked.length > 0 || displayCount > 1
     const win = BrowserWindow.fromWebContents(event.sender)

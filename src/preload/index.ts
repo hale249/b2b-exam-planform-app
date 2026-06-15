@@ -1,4 +1,5 @@
 import './api'
+import './auth-token'
 import './blocked-overlay'
 import './confirm-overlay'
 import './update-banner'

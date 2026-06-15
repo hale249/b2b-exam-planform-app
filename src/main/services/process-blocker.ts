@@ -1,6 +1,15 @@
 import { desktopCapturer } from 'electron'
 
+import { emitAppEvent } from './app-events'
 import { findBlockedProcesses, getRunningProcesses } from '../utils'
+
+let lastBlockedKey = ''
+export const reportBlockedApps = (blocked: string[]): void => {
+  const key = [...blocked].sort().join('|')
+  if (key === lastBlockedKey) return
+  lastBlockedKey = key
+  if (blocked.length > 0) emitAppEvent('app_blocked_process_detected', { apps: blocked })
+}
 
 export const checkBlockedProcesses = async (): Promise<string[]> => {
   try {

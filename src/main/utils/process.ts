@@ -1,6 +1,6 @@
 import { exec } from 'child_process'
 
-import { BLOCKED_PROCESSES } from '../constants/blocked-processes'
+import { getEffectiveBlockedProcesses } from '../services/blocklist'
 
 export const getRunningProcesses = (): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -19,7 +19,7 @@ export const getRunningProcesses = (): Promise<string> => {
 export const findBlockedProcesses = (processOutput: string): string[] => {
   const detected: string[] = []
 
-  for (const proc of BLOCKED_PROCESSES) {
+  for (const proc of getEffectiveBlockedProcesses()) {
     for (const pattern of proc.patterns) {
       const regex = new RegExp(`(^|[\\s/\\\\",])${pattern}([\\s.,"\\\\]|$)`, 'm')
       if (regex.test(processOutput)) {

@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   allowQuit: (): Promise<void> => {
     return ipcRenderer.invoke(IPC_CONSTANTS.ALLOW_QUIT)
   },
+  setExamContext: (batchCandidateId: number): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CONSTANTS.SET_EXAM_CONTEXT, batchCandidateId)
+  },
+  clearExamContext: (): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CONSTANTS.CLEAR_EXAM_CONTEXT)
+  },
   setFullScreen: (enabled: boolean): Promise<void> => {
     return ipcRenderer.invoke(IPC_CONSTANTS.SET_FULLSCREEN, enabled)
   },
