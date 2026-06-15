@@ -1,8 +1,8 @@
 name: Release
 
-# Push a tag like v1.0.0 to build mac + windows + linux installers and publish
-# them as a GitHub Release. The X.Y.Z in the tag should match package.json version
-# (electron-builder names files by package.json, not by the tag).
+# Push a tag like v1.0.0 to build mac + windows + linux and publish them as a
+# GitHub Release (electron-builder uploads the installers + latest*.yml for
+# auto-update). The X.Y.Z in the tag should match package.json version.
 #   git tag v1.0.0 && git push github v1.0.0
 on:
   push:
@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build (${{ matrix.platform }})
+  release:
+    name: Build & Release (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -27,21 +27,13 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
-            build_cmd: pnpm run build:mac
+            eb_flag: "--mac"
           - os: windows-latest
             platform: win
-            build_cmd: pnpm run build:win
+            eb_flag: "--win"
           - os: ubuntu-latest
             platform: linux
-            build_cmd: pnpm run build:linux
-
-    env:
-      # Electron 42 has no postinstall; its installer uses extract-zip@2.0.1 which
-      # crashes on Node 24 (mac/win) -> use Node 22. Node only orchestrates here;
-      # bytecode is compiled by Electron's own V8 (see scripts/compile-bytecode.cjs).
-      ELECTRON_RUN_AS_NODE: "1"
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      GCS_BUCKET: "local-dev"
+            eb_flag: "--linux"
 
     steps:
       - name: Checkout
@@ -66,6 +58,8 @@ jobs:
           version: 10.26.1
 
       - name: Setup Node.js
+        # Node 22: Electron 42's extract-zip@2.0.1 crashes on Node 24 (mac/win).
+        # Node only orchestrates; bytecode is compiled by Electron's own V8.
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -85,36 +79,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: ${{ matrix.build_cmd }}
+      - name: Vite build
+        run: pnpm run build
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.platform }}
-          path: |
-            dist/*.exe
-            dist/*.dmg
-            dist/*.AppImage
-            dist/*.zip
-            dist/*.blockmap
-            dist/latest*.yml
-          if-no-files-found: error
+      - name: Compile bytecode
+        run: pnpm run bytecode
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
 
-  release:
-    name: Publish GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*
-          fail_on_unmatched_files: true
-          generate_release_notes: true
+      - name: Build & publish to GitHub Release
+        run: pnpm exec electron-builder ${{ matrix.eb_flag }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
