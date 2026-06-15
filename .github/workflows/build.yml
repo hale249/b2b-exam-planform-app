@@ -1,8 +1,4 @@
 name: Test Build
-
-# Build de kiem thu (mac + windows), KHONG publish len GCS.
-# Bam thu cong tu tab Actions -> Test Build -> Run workflow,
-# hoac tu dong khi push len cac nhanh duoi day.
 on:
   push:
     branches:
@@ -86,7 +82,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: prepedu-exam-${{ matrix.platform }}
+          name: prep-exam-${{ matrix.platform }}
           path: |
             dist/*.exe
             dist/*.dmg

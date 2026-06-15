@@ -7,34 +7,35 @@ import {
   setBlockedProcessesActive,
   setMultipleDisplaysActive
 } from '../security-lock'
+import { IPC_CONSTANTS } from '../../shared/ipc-channels'
 
 export const registerIpcHandlers = (): void => {
-  ipcMain.handle('get-app-version', () => {
+  ipcMain.handle(IPC_CONSTANTS.GET_APP_VERSION, () => {
     return app.getVersion()
   })
 
-  ipcMain.handle('open-external-url', (_event, url: string) => {
+  ipcMain.handle(IPC_CONSTANTS.OPEN_EXTERNAL_URL, (_event, url: string) => {
     // The exam page is remote content — never pass through non-web schemes
     // (file://, smb://, ...) to the OS.
     if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return
     return shell.openExternal(url)
   })
 
-  ipcMain.handle('check-blocked-processes', async (event) => {
+  ipcMain.handle(IPC_CONSTANTS.CHECK_BLOCKED_PROCESSES, async (event) => {
     const blocked = await checkBlockedApps()
     setBlockedProcessesActive(blocked.length > 0)
 
     if (blocked.length > 0) {
       const win = BrowserWindow.fromWebContents(event.sender)
       if (win && !win.isDestroyed()) {
-        win.webContents.send('check-blocked-processes', blocked)
+        win.webContents.send(IPC_CONSTANTS.CHECK_BLOCKED_PROCESSES, blocked)
       }
     }
 
     return blocked
   })
 
-  ipcMain.handle('check-exam-security', async (event) => {
+  ipcMain.handle(IPC_CONSTANTS.CHECK_EXAM_SECURITY, async (event) => {
     const [blocked, displayCount] = await Promise.all([
       checkBlockedApps(),
       Promise.resolve(screen.getAllDisplays().length)
@@ -46,7 +47,7 @@ export const registerIpcHandlers = (): void => {
     const hasViolation = blocked.length > 0 || displayCount > 1
     const win = BrowserWindow.fromWebContents(event.sender)
     if (hasViolation && win && !win.isDestroyed()) {
-      win.webContents.send('force-security-check', {
+      win.webContents.send(IPC_CONSTANTS.FORCE_SECURITY_CHECK, {
         blockedProcesses: blocked,
         displayCount
       })
@@ -55,7 +56,7 @@ export const registerIpcHandlers = (): void => {
     return hasViolation
   })
 
-  ipcMain.handle('set-fullscreen', (event, enabled: boolean) => {
+  ipcMain.handle(IPC_CONSTANTS.SET_FULLSCREEN, (event, enabled: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) {
       if (enabled) {
@@ -71,7 +72,7 @@ export const registerIpcHandlers = (): void => {
     }
   })
 
-  ipcMain.handle('get-fullscreen', (event) => {
+  ipcMain.handle(IPC_CONSTANTS.GET_FULLSCREEN, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     return win ? win.isKiosk() : false
   })

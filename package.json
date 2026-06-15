@@ -1,5 +1,5 @@
 {
-  "name": "prepedu-exam-platform",
+  "name": "prep-exam-platform",
   "version": "1.0.0",
   "description": "Secure Electron exam platform with anti-cheating measures",
   "main": "./dist-electron/main/index.js",

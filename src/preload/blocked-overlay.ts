@@ -1,5 +1,7 @@
 import { ipcRenderer } from 'electron'
 
+import { IPC_CONSTANTS } from '../shared/ipc-channels'
+
 const DISMISS_COOLDOWN_MS = 15_000
 
 let blockedProcesses: string[] = []
@@ -330,24 +332,24 @@ function renderOverlay(): void {
   overlay.style.display = 'flex'
 }
 
-ipcRenderer.on('blocked-processes', (_event, processes: string[]) => {
+ipcRenderer.on(IPC_CONSTANTS.BLOCKED_PROCESSES, (_event, processes: string[]) => {
   blockedProcesses = processes
   renderOverlay()
 })
 
-ipcRenderer.on('check-blocked-processes', (_event, processes: string[]) => {
+ipcRenderer.on(IPC_CONSTANTS.CHECK_BLOCKED_PROCESSES, (_event, processes: string[]) => {
   blockedProcesses = processes
   renderOverlay()
 })
 
-ipcRenderer.on('display-count', (_event, count: number) => {
+ipcRenderer.on(IPC_CONSTANTS.DISPLAY_COUNT, (_event, count: number) => {
   multipleDisplays = count > 1
   renderOverlay()
 })
 
 // Listen for force-check from main (triggered by web app's checkSecurityViolations)
 ipcRenderer.on(
-  'force-security-check',
+  IPC_CONSTANTS.FORCE_SECURITY_CHECK,
   (_event, data: { blockedProcesses: string[]; displayCount: number }) => {
     blockedProcesses = data.blockedProcesses
     multipleDisplays = data.displayCount > 1

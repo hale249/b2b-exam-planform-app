@@ -3,6 +3,8 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 // named import (see updater.ts for the full explanation).
 import { autoUpdater } from 'electron-updater'
 
+import { IPC_CONSTANTS } from '../shared/ipc-channels'
+
 // User-initiated ("manual") update flow shown ON the batch screen.
 //
 // Unlike the startup force-update gate in updater.ts (which downloads + installs
@@ -49,7 +51,7 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     if (process.env.TEST_UPDATER === '1') autoUpdater.forceDevUpdateConfig = true
 
     autoUpdater.on('download-progress', (p) => {
-      send('updater:progress', {
+      send(IPC_CONSTANTS.UPDATER_PROGRESS, {
         percent: Number(p?.percent) || 0,
         bytesPerSecond: Number(p?.bytesPerSecond) || 0,
         transferred: Number(p?.transferred) || 0,
@@ -59,16 +61,16 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
 
     autoUpdater.on('update-downloaded', (info) => {
       downloading = false
-      send('updater:downloaded', { version: String(info?.version || '') })
+      send(IPC_CONSTANTS.UPDATER_DOWNLOADED, { version: String(info?.version || '') })
     })
 
     autoUpdater.on('error', (err) => {
       downloading = false
-      send('updater:error', { message: err?.message || String(err) })
+      send(IPC_CONSTANTS.UPDATER_ERROR, { message: err?.message || String(err) })
     })
   }
 
-  ipcMain.handle('updater:check', async () => {
+  ipcMain.handle(IPC_CONSTANTS.UPDATER_CHECK, async () => {
     const currentVersion = app.getVersion()
     if (!updaterEnabled()) return { available: false, currentVersion }
     ensureBound()
@@ -101,7 +103,7 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     }
   })
 
-  ipcMain.handle('updater:download', async () => {
+  ipcMain.handle(IPC_CONSTANTS.UPDATER_DOWNLOAD, async () => {
     if (!updaterEnabled()) return { ok: false }
     ensureBound()
     if (downloading) return { ok: true }
@@ -115,7 +117,7 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     }
   })
 
-  ipcMain.handle('updater:install', () => {
+  ipcMain.handle(IPC_CONSTANTS.UPDATER_INSTALL, () => {
     if (!updaterEnabled()) return
     try {
       // isSilent=true, isForceRunAfter=true → reinstall and reopen automatically.

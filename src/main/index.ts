@@ -18,6 +18,7 @@ import {
 } from './crash-recovery'
 import { runUpdateGate } from './updater'
 import { registerManualUpdater } from './manual-updater'
+import { IPC_CONSTANTS } from '../shared/ipc-channels'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
 const APP_NAME = import.meta.env.VITE_APP_NAME
@@ -68,7 +69,7 @@ const createWindow = (): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const id = `quit_${Date.now()}`
       pendingQuitConfirmId = id
-      mainWindow.webContents.send('show-confirm', {
+      mainWindow.webContents.send(IPC_CONSTANTS.SHOW_CONFIRM, {
         id,
         icon: '',
         iconColor: '',
@@ -95,7 +96,7 @@ const createWindow = (): void => {
   mainWindow.on('blur', () => {
     if (isSecurityBlockActive()) return
     if (mainWindow && !mainWindow.isDestroyed() && !forceQuit && mainWindow.isKiosk()) {
-      mainWindow.webContents.send('tab-violation')
+      mainWindow.webContents.send(IPC_CONSTANTS.TAB_VIOLATION)
       // Pull focus back to the exam. On macOS Cmd+Tab is OS-reserved and can't be
       // disabled, and a plain focus() won't yank the app in front of whatever the
       // student switched to — app.focus({ steal: true }) + moveTop() do. Run it
@@ -219,7 +220,7 @@ const checkDisplayCount = (win: BrowserWindow): void => {
   if (win.isDestroyed() || win.webContents.isDestroyed()) return
   const displays = screen.getAllDisplays()
   setMultipleDisplaysActive(displays.length > 1)
-  win.webContents.send('display-count', displays.length)
+  win.webContents.send(IPC_CONSTANTS.DISPLAY_COUNT, displays.length)
 }
 
 const startDisplayMonitor = (win: BrowserWindow): void => {
@@ -269,7 +270,7 @@ registerIpcHandlers()
 // on demand, separate from the startup force-update gate.
 registerManualUpdater(() => mainWindow)
 
-ipcMain.handle('allow-quit', () => {
+ipcMain.handle(IPC_CONSTANTS.ALLOW_QUIT, () => {
   allowQuit = true
 })
 
@@ -396,7 +397,7 @@ const registerBlockedShortcuts = (): void => {
   })
 
   ipcMain.on(
-    'confirm-response',
+    IPC_CONSTANTS.CONFIRM_RESPONSE,
     (_event, { id, confirmed }: { id: string; confirmed: boolean }) => {
       isConfirmShowing = false
       // Cooldown to prevent Esc from immediately reopening confirm
@@ -437,7 +438,7 @@ const registerBlockedShortcuts = (): void => {
     const id = `confirm_${++confirmCounter}`
     pendingConfirms.set(id, options.onConfirm)
     const { onConfirm: _, ...sendOptions } = options
-    mainWindow.webContents.send('show-confirm', { id, ...sendOptions })
+    mainWindow.webContents.send(IPC_CONSTANTS.SHOW_CONFIRM, { id, ...sendOptions })
   }
 
   // Reload shortcuts
