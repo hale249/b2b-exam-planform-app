@@ -5,6 +5,8 @@ import { app, BrowserWindow } from 'electron'
 // access on require('electron-updater').
 import { autoUpdater } from 'electron-updater'
 
+import { applyUpdateChannel } from './updater-channel'
+
 // Force-update gate shown BEFORE the exam loads.
 //
 // Flow: show a branded "checking / downloading / installing" screen in the main
@@ -133,6 +135,7 @@ export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void =
   // We install in-gate (quitAndInstall) — don't also defer to app quit.
   autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.logger = console
+  applyUpdateChannel()
 
   autoUpdater.removeAllListeners()
 

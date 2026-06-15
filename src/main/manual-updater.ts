@@ -4,6 +4,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
 import { IPC_CONSTANTS } from '../shared/ipc-channels'
+import { applyUpdateChannel } from './updater-channel'
 
 // User-initiated ("manual") update flow shown ON the batch screen.
 //
@@ -48,6 +49,7 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     autoUpdater.autoDownload = false // manual: the user clicks to download
     autoUpdater.autoInstallOnAppQuit = false
     autoUpdater.logger = console
+    applyUpdateChannel()
     if (process.env.TEST_UPDATER === '1') autoUpdater.forceDevUpdateConfig = true
 
     autoUpdater.on('download-progress', (p) => {
