@@ -1,0 +1,120 @@
+name: Release
+
+# Push a tag like v1.0.0 to build mac + windows + linux installers and publish
+# them as a GitHub Release. The X.Y.Z in the tag should match package.json version
+# (electron-builder names files by package.json, not by the tag).
+#   git tag v1.0.0 && git push github v1.0.0
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            build_cmd: pnpm run build:mac
+          - os: windows-latest
+            platform: win
+            build_cmd: pnpm run build:win
+          - os: ubuntu-latest
+            platform: linux
+            build_cmd: pnpm run build:linux
+
+    env:
+      # Electron 42 has no postinstall; its installer uses extract-zip@2.0.1 which
+      # crashes on Node 24 (mac/win) -> use Node 22. Node only orchestrates here;
+      # bytecode is compiled by Electron's own V8 (see scripts/compile-bytecode.cjs).
+      ELECTRON_RUN_AS_NODE: "1"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      GCS_BUCKET: "local-dev"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Electron runtime libs (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2t64 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libatspi2.0-0t64 \
+          || sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libatspi2.0-0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Create .env
+        shell: bash
+        env:
+          ENV_FILE_CONTENT: ${{ secrets.ENV_FILE }}
+        run: |
+          if [ -n "$ENV_FILE_CONTENT" ]; then
+            printf '%s' "$ENV_FILE_CONTENT" > .env
+          elif [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
