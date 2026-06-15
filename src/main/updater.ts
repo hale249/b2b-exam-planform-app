@@ -117,41 +117,7 @@ const UPDATER_HTML =
     </body></html>`
   )
 
-// Dev-only: preview the updater progress screen WITHOUT a real update.
-// Run with PREVIEW_UPDATER=1 (e.g. `PREVIEW_UPDATER=1 pnpm dev` or `pnpm dev:updater`).
-// Loops checking -> downloading 0..100% -> installing so the UI can be inspected.
-const previewUpdaterUI = (win: BrowserWindow): void => {
-  const ui = (expr: string): void => {
-    if (!win.isDestroyed()) win.webContents.executeJavaScript(expr).catch(() => {})
-  }
-  win.loadURL(UPDATER_HTML)
-  win.webContents.once('did-finish-load', () => {
-    const total = 58 * 1024 * 1024
-    const runOnce = (): void => {
-      ui(`window.upd&&window.upd.status('checking')`)
-      setTimeout(() => ui(`window.upd&&window.upd.status('downloading','1.0.9')`), 900)
-      let pct = 0
-      const iv = setInterval(() => {
-        pct = Math.min(100, pct + 3)
-        const transferred = Math.round((total * pct) / 100)
-        ui(`window.upd&&window.upd.progress(${pct},${Math.round(3.2 * 1024 * 1024)},${transferred},${total})`)
-        if (pct >= 100) {
-          clearInterval(iv)
-          setTimeout(() => ui(`window.upd&&window.upd.status('installing')`), 600)
-          setTimeout(runOnce, 3500)
-        }
-      }, 200)
-    }
-    setTimeout(runOnce, 500)
-  })
-}
-
 export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void => {
-  // Dev preview of the updater UI (no real update). See previewUpdaterUI above.
-  if (process.env.PREVIEW_UPDATER === '1') {
-    previewUpdaterUI(win)
-    return
-  }
   // electron-updater only works in a packaged app. In dev, go straight in —
   // unless TEST_UPDATER=1, which forces the gate to run against a local
   // dev-app-update.yml so the flow/UI can be exercised without packaging.

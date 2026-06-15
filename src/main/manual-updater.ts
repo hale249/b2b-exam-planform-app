@@ -120,13 +120,6 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
   })
 
   ipcMain.handle(IPC_CONSTANTS.UPDATER_INSTALL, () => {
-    // Dev preview (PREVIEW_BANNER=1): no real update — just relaunch the app so
-    // the full banner -> restart loop can be demoed.
-    if (process.env.PREVIEW_BANNER === '1') {
-      app.relaunch()
-      app.exit(0)
-      return
-    }
     if (!updaterEnabled()) return
     // Safety net: NEVER relaunch into an install while an exam is in progress
     // (window is in kiosk mode). A mid-exam restart would wipe the student's

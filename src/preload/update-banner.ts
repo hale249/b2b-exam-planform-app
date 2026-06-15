@@ -12,15 +12,6 @@ let state: 'available' | 'downloading' | 'ready' | 'restarting' = 'available'
 let version = ''
 let percent = 0
 
-// Dev preview: PREVIEW_BANNER=1 shows the banner + fakes the flow (no real update).
-const PREVIEW = ((): boolean => {
-  try {
-    return process.env.PREVIEW_BANNER === '1'
-  } catch {
-    return false
-  }
-})()
-
 function injectStyles(): void {
   if (document.getElementById('__upd_styles')) return
   const s = document.createElement('style')
@@ -84,18 +75,6 @@ function startDownload(): void {
   state = 'downloading'
   percent = 0
   render()
-  if (PREVIEW) {
-    const iv = setInterval(() => {
-      percent = Math.min(100, percent + 5)
-      render()
-      if (percent >= 100) {
-        clearInterval(iv)
-        state = 'ready'
-        render()
-      }
-    }, 200)
-    return
-  }
   ipcRenderer.invoke(IPC_CONSTANTS.UPDATER_DOWNLOAD)
 }
 
@@ -141,7 +120,7 @@ function restart(): void {
   state = 'restarting'
   render()
   // Brief "restarting" state, then quitAndInstall (relaunch into the new build).
-  setTimeout(() => ipcRenderer.invoke(IPC_CONSTANTS.UPDATER_INSTALL), PREVIEW ? 1500 : 150)
+  setTimeout(() => ipcRenderer.invoke(IPC_CONSTANTS.UPDATER_INSTALL), 150)
 }
 
 function show(): void {
@@ -175,13 +154,3 @@ ipcRenderer.on(IPC_CONSTANTS.UPDATER_ERROR, () => {
     render()
   }
 })
-
-if (PREVIEW) {
-  const run = (): void => {
-    version = '1.0.9'
-    state = 'available'
-    show()
-  }
-  if (document.body) setTimeout(run, 1200)
-  else window.addEventListener('DOMContentLoaded', () => setTimeout(run, 1200))
-}
