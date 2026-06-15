@@ -18,6 +18,7 @@ export const IPC_CONSTANTS = {
   SHOW_CONFIRM: 'show-confirm',
   CONFIRM_RESPONSE: 'confirm-response',
   DISPLAY_COUNT: 'display-count',
+  UPDATER_AVAILABLE: 'updater:available',
   UPDATER_PROGRESS: 'updater:progress',
   UPDATER_DOWNLOADED: 'updater:downloaded',
   UPDATER_ERROR: 'updater:error'

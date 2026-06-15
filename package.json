@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:updater": "DISABLE_SCREEN_PROTECTION=1 PREVIEW_UPDATER=1 vite",
+    "dev:banner": "DISABLE_SCREEN_PROTECTION=1 PREVIEW_BANNER=1 vite",
     "clean": "rimraf dist dist-electron",
     "build": "rimraf dist dist-electron && vite build",
     "bytecode": "electron scripts/compile-bytecode.cjs",

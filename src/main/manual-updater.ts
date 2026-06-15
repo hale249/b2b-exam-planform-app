@@ -136,4 +136,31 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
       console.error('[ManualUpdater] quitAndInstall failed:', err)
     }
   })
+
+  // --- Background "new version" notifier (polling) ---
+  // Periodically check for a newer build and tell the renderer (in-app banner).
+  // NEVER while an exam is in progress (kiosk): a check/notify must not disturb a
+  // test session. autoDownload is off, so this only checks — it does not download.
+  let lastNotified = ''
+  const checkAndNotify = async (): Promise<void> => {
+    if (!updaterEnabled()) return
+    const win = getWindow()
+    if (!win || win.isDestroyed() || win.isKiosk() || downloading) return
+    ensureBound()
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      const version = String(result?.updateInfo?.version || '')
+      const available = result?.isUpdateAvailable ?? (!!version && version !== app.getVersion())
+      if (available && version && version !== lastNotified) {
+        lastNotified = version
+        send(IPC_CONSTANTS.UPDATER_AVAILABLE, { version })
+      }
+    } catch {
+      // A flaky check must never disturb the session — ignore.
+    }
+  }
+
+  // First check shortly after launch (on the home screen), then every 30 min.
+  setTimeout(checkAndNotify, 45_000)
+  setInterval(checkAndNotify, 30 * 60_000)
 }
