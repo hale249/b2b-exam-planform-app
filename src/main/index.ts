@@ -18,6 +18,10 @@ import {
 } from './crash-recovery'
 import { runUpdateGate } from './updater'
 import { registerManualUpdater } from './manual-updater'
+import { startBlocklistSync, stopBlocklistSync } from './services/blocklist-sync'
+import { emitAppEvent, startAppEvents, stopAppEvents } from './services/app-events'
+import { initLogger, logger } from './logger'
+import { IPC_CONSTANTS } from '../shared/ipc-channels'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
 const APP_NAME = import.meta.env.VITE_APP_NAME
@@ -26,6 +30,9 @@ let mainWindow: BrowserWindow | null = null
 let allowQuit = false
 let forceQuit = false
 let pendingQuitConfirmId: string | null = null
+// True while the exam window has lost OS focus during kiosk (so we emit the
+// focus-lost / focus-regained pair once each, not on every refocus tick).
+let appFocusLost = false
 
 // Force the exam window in front of every other app (Chrome, etc.). A plain
 // show()/focus() does not steal focus from whatever app is currently active —
@@ -68,7 +75,7 @@ const createWindow = (): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const id = `quit_${Date.now()}`
       pendingQuitConfirmId = id
-      mainWindow.webContents.send('show-confirm', {
+      mainWindow.webContents.send(IPC_CONSTANTS.SHOW_CONFIRM, {
         id,
         icon: '',
         iconColor: '',
@@ -95,7 +102,11 @@ const createWindow = (): void => {
   mainWindow.on('blur', () => {
     if (isSecurityBlockActive()) return
     if (mainWindow && !mainWindow.isDestroyed() && !forceQuit && mainWindow.isKiosk()) {
-      mainWindow.webContents.send('tab-violation')
+      mainWindow.webContents.send(IPC_CONSTANTS.TAB_VIOLATION)
+      if (!appFocusLost) {
+        appFocusLost = true
+        emitAppEvent('app_focus_lost')
+      }
       // Pull focus back to the exam. On macOS Cmd+Tab is OS-reserved and can't be
       // disabled, and a plain focus() won't yank the app in front of whatever the
       // student switched to — app.focus({ steal: true }) + moveTop() do. Run it
@@ -106,6 +117,13 @@ const createWindow = (): void => {
       }
       refocus()
       setTimeout(refocus, 100)
+    }
+  })
+
+  mainWindow.on('focus', () => {
+    if (appFocusLost) {
+      appFocusLost = false
+      emitAppEvent('app_focus_regained')
     }
   })
 
@@ -214,12 +232,19 @@ const createWindow = (): void => {
 }
 
 let displayIntervalId: ReturnType<typeof setInterval> | null = null
+let lastDisplayCount = 0
 
 const checkDisplayCount = (win: BrowserWindow): void => {
   if (win.isDestroyed() || win.webContents.isDestroyed()) return
   const displays = screen.getAllDisplays()
-  setMultipleDisplaysActive(displays.length > 1)
-  win.webContents.send('display-count', displays.length)
+  const count = displays.length
+  setMultipleDisplaysActive(count > 1)
+  // Emit only on a real change (skip the very first baseline measurement).
+  if (lastDisplayCount !== 0 && count !== lastDisplayCount) {
+    emitAppEvent('app_display_changed', { count })
+  }
+  lastDisplayCount = count
+  win.webContents.send(IPC_CONSTANTS.DISPLAY_COUNT, count)
 }
 
 const startDisplayMonitor = (win: BrowserWindow): void => {
@@ -269,7 +294,7 @@ registerIpcHandlers()
 // on demand, separate from the startup force-update gate.
 registerManualUpdater(() => mainWindow)
 
-ipcMain.handle('allow-quit', () => {
+ipcMain.handle(IPC_CONSTANTS.ALLOW_QUIT, () => {
   allowQuit = true
 })
 
@@ -319,8 +344,26 @@ app.whenReady().then(() => {
     callback(allowedPermissions.includes(permission))
   })
 
+  // Set up file logging (daily files + retention) before anything else, so
+  // startup diagnostics are captured.
+  initLogger()
+  logger.info('App starting', { version: app.getVersion(), platform: process.platform })
+
+  // Tag every request originating inside the app with a UA suffix, so the
+  // backend can passively tell "from the desktop app" vs a plain browser.
+  const baseUserAgent = session.defaultSession.getUserAgent()
+  session.defaultSession.setUserAgent(
+    `${baseUserAgent} PrepExamApp/${app.getVersion()} (${process.platform})`
+  )
+
+  // Load the local native-events outbox (synced once the candidate is known).
+  void startAppEvents()
+
   createWindow()
   registerBlockedShortcuts()
+  // Pull the admin-managed extra blocklist in the background (HMAC-signed).
+  // The hardcoded baseline already protects the exam, so this never blocks.
+  startBlocklistSync()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -338,12 +381,18 @@ const exitExamLock = (): void => {
 }
 
 const registerBlockedShortcuts = (): void => {
-  globalShortcut.register('PrintScreen', () => {})
-  globalShortcut.register('CommandOrControl+Shift+3', () => {})
-  globalShortcut.register('CommandOrControl+Shift+4', () => {})
-  globalShortcut.register('CommandOrControl+Shift+5', () => {})
-  globalShortcut.register('CommandOrControl+Control+Shift+3', () => {})
-  globalShortcut.register('CommandOrControl+Control+Shift+4', () => {})
+  // Swallow the screenshot shortcut AND record the attempt as a native event.
+  const blockScreenshot = (accelerator: string): void => {
+    globalShortcut.register(accelerator, () =>
+      emitAppEvent('app_screenshot_blocked', { shortcut: accelerator })
+    )
+  }
+  blockScreenshot('PrintScreen')
+  blockScreenshot('CommandOrControl+Shift+3')
+  blockScreenshot('CommandOrControl+Shift+4')
+  blockScreenshot('CommandOrControl+Shift+5')
+  blockScreenshot('CommandOrControl+Control+Shift+3')
+  blockScreenshot('CommandOrControl+Control+Shift+4')
 
   // Block Alt+Tab / Cmd+Tab. NOTE: on macOS Cmd+Tab (and Mission Control's
   // Control+Arrow) are OS-reserved — register() returns false and the switcher
@@ -396,7 +445,7 @@ const registerBlockedShortcuts = (): void => {
   })
 
   ipcMain.on(
-    'confirm-response',
+    IPC_CONSTANTS.CONFIRM_RESPONSE,
     (_event, { id, confirmed }: { id: string; confirmed: boolean }) => {
       isConfirmShowing = false
       // Cooldown to prevent Esc from immediately reopening confirm
@@ -405,6 +454,9 @@ const registerBlockedShortcuts = (): void => {
       if (id === pendingQuitConfirmId) {
         pendingQuitConfirmId = null
         if (confirmed) {
+          // Quitting the app while in the locked exam = an exit. Persisted
+          // synchronously on quit (stopAppEvents), synced on next launch.
+          if (mainWindow?.isKiosk()) emitAppEvent('app_exam_exit', { via: 'quit' })
           forceQuit = true
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.destroy()
@@ -437,7 +489,7 @@ const registerBlockedShortcuts = (): void => {
     const id = `confirm_${++confirmCounter}`
     pendingConfirms.set(id, options.onConfirm)
     const { onConfirm: _, ...sendOptions } = options
-    mainWindow.webContents.send('show-confirm', { id, ...sendOptions })
+    mainWindow.webContents.send(IPC_CONSTANTS.SHOW_CONFIRM, { id, ...sendOptions })
   }
 
   // Reload shortcuts
@@ -477,6 +529,8 @@ const registerBlockedShortcuts = (): void => {
       confirmColor: '#d97706',
       cancelLabel: 'Stay',
       onConfirm: () => {
+        // Only count as an exam exit if we were actually in the locked exam.
+        if (mainWindow?.isKiosk()) emitAppEvent('app_exam_exit', { via: 'home' })
         bypassUnload()
         exitExamLock()
         mainWindow?.loadURL(EXAM_URL)
@@ -500,6 +554,7 @@ const registerBlockedShortcuts = (): void => {
       Date.now() > escCooldownUntil
     ) {
       event.preventDefault()
+      emitAppEvent('app_kiosk_exit_attempt', { via: 'esc' })
       showConfirm({
         icon: '',
         iconColor: '',
@@ -509,6 +564,8 @@ const registerBlockedShortcuts = (): void => {
         confirmColor: '#E20D2C',
         cancelLabel: 'Cancel',
         onConfirm: () => {
+          // Actually confirmed leaving the exam (was in kiosk) → track exit.
+          emitAppEvent('app_exam_exit', { via: 'esc' })
           bypassUnload()
           exitExamLock()
           // Swallow any in-flight set-fullscreen(true) from the page being
@@ -524,6 +581,7 @@ const registerBlockedShortcuts = (): void => {
   globalShortcut.register('F11', () => {
     if (!mainWindow) return
     if (mainWindow.isKiosk()) {
+      emitAppEvent('app_kiosk_exit_attempt', { via: 'f11' })
       showConfirm({
         icon: '',
         iconColor: '',
@@ -533,6 +591,7 @@ const registerBlockedShortcuts = (): void => {
         confirmColor: '#2563eb',
         cancelLabel: 'Cancel',
         onConfirm: () => {
+          emitAppEvent('app_exam_exit', { via: 'f11' })
           exitExamLock()
         }
       })
@@ -541,8 +600,8 @@ const registerBlockedShortcuts = (): void => {
     }
   })
 
-  globalShortcut.register('Super+Shift+S', () => {})
-  globalShortcut.register('Super+PrintScreen', () => {})
+  blockScreenshot('Super+Shift+S')
+  blockScreenshot('Super+PrintScreen')
 
   if (app.isPackaged) {
     globalShortcut.register('CommandOrControl+Shift+I', () => {})
@@ -554,6 +613,8 @@ const registerBlockedShortcuts = (): void => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   stopProcessMonitor()
+  stopBlocklistSync()
+  stopAppEvents()
   if (displayIntervalId) clearInterval(displayIntervalId)
 })
 

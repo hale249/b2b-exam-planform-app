@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "stg_v*"
+      - "dev_v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & Release (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            eb_flag: "--mac"
+          - os: windows-latest
+            platform: win
+            eb_flag: "--win"
+          - os: ubuntu-latest
+            platform: linux
+            eb_flag: "--linux"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Electron runtime libs (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2t64 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libatspi2.0-0t64 \
+          || sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libatspi2.0-0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set version from tag
+        # Channel is encoded in the version prerelease so each env auto-updates
+        # only within itself (electron-updater channel): dev->X.Y.Z-dev,
+        # stg->X.Y.Z-stg, prod->X.Y.Z.
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            dev_*) version="${tag#dev_v}-dev" ;;
+            stg_*) version="${tag#stg_v}-stg" ;;
+            *)     version="${tag#v}" ;;
+          esac
+          echo "Tag $tag -> version $version"
+          npm pkg set version="$version"
+
+      - name: Create .env
+        shell: bash
+        env:
+          ENV_FILE_CONTENT: ${{ startsWith(github.ref_name, 'dev_') && secrets.ENV_FILE_DEV || startsWith(github.ref_name, 'stg_') && secrets.ENV_FILE_STG || secrets.ENV_FILE_PROD }}
+        run: |
+          if [ -n "$ENV_FILE_CONTENT" ]; then
+            printf '%s' "$ENV_FILE_CONTENT" > .env
+          elif [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Vite build
+        run: pnpm run build
+
+      - name: Compile bytecode
+        run: pnpm run bytecode
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+
+      - name: Set app identity per environment
+        # Edit electron-builder.json via Node (reads process.env -> no shell
+        # quoting issues with spaces in productName, unlike passing -c.* on CLI).
+        # releaseType per env: dev/stg auto-publish as prerelease, prod auto-publishes
+        # as a full release (so installers are immediately visible/downloadable).
+        shell: bash
+        env:
+          EB_PRODUCT_NAME: ${{ startsWith(github.ref_name, 'dev_') && 'Prep Exam Dev' || startsWith(github.ref_name, 'stg_') && 'Prep Exam STG' || 'Prep Exam Platform' }}
+          EB_APP_ID: ${{ startsWith(github.ref_name, 'dev_') && 'com.prepedu.exam-platform.dev' || startsWith(github.ref_name, 'stg_') && 'com.prepedu.exam-platform.stg' || 'com.prepedu.exam-platform' }}
+          EB_RELEASE_TYPE: ${{ (startsWith(github.ref_name, 'dev_') || startsWith(github.ref_name, 'stg_')) && 'prerelease' || 'release' }}
+        run: |
+          node -e "const fs=require('fs');const f='electron-builder.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.productName=process.env.EB_PRODUCT_NAME;c.appId=process.env.EB_APP_ID;c.publish.releaseType=process.env.EB_RELEASE_TYPE;fs.writeFileSync(f,JSON.stringify(c,null,2));console.log('productName='+c.productName,'| appId='+c.appId,'| releaseType='+c.publish.releaseType);"
+
+      - name: Build & publish to GitHub Release
+        run: pnpm exec electron-builder ${{ matrix.eb_flag }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"

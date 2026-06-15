@@ -1,5 +1,5 @@
 {
-  "name": "prepedu-exam-platform",
+  "name": "prep-exam-platform",
   "version": "1.0.0",
   "description": "Secure Electron exam platform with anti-cheating measures",
   "main": "./dist-electron/main/index.js",
@@ -11,11 +11,9 @@
     "bytecode": "electron scripts/compile-bytecode.cjs",
     "start": "electron .",
     "build:unpack": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --dir",
-    "build:win": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --win",
-    "build:mac": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --mac",
-    "build:linux": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --linux",
-    "build:local:mac": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && GCS_BUCKET=local-dev CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
-    "build:local:dir": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && GCS_BUCKET=local-dev CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "build:win": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --win --publish never",
+    "build:mac": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --mac --publish never",
+    "build:linux": "rimraf dist dist-electron && vite build && electron scripts/compile-bytecode.cjs && electron-builder --linux --publish never",
     "typecheck": "tsc --noEmit --composite false -p tsconfig.node.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -23,7 +21,9 @@
     "format:check": "prettier --check \"src/**/*.{ts,vue,js,json,css,html}\""
   },
   "dependencies": {
+    "axios": "^1.18.0",
     "bytenode": "^1.5.7",
+    "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",
     "vue": "^3.5.35"
   },

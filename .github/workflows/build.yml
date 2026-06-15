@@ -1,0 +1,105 @@
+name: Test Build
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+  workflow_dispatch:
+
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            build_cmd: pnpm run build:mac
+
+          - os: windows-latest
+            platform: win
+            build_cmd: pnpm run build:win
+
+          - os: ubuntu-latest
+            platform: linux
+            build_cmd: pnpm run build:linux
+
+    env:
+      # Bytecode runs Electron headless -> run-as-node (still uses Electron's V8).
+      ELECTRON_RUN_AS_NODE: "1"
+      # No code signing for test builds.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Electron runtime libs (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2t64 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libatspi2.0-0t64 \
+          || sudo apt-get install -y \
+            libnss3 libnspr4 libgbm1 libgtk-3-0 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libatspi2.0-0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Setup Node.js
+        # Node 22 (LTS): Electron 42's binary installer uses extract-zip@2.0.1,
+        # which silently crashes on Node 24 (mac/win) -> path.txt never written
+        # -> bytecode step fails. Node only orchestrates here; bytecode is still
+        # compiled by Electron's own V8, so this does not affect correctness.
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Create .env
+        shell: bash
+        run: |
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            printf 'VITE_APP_NAME="Prep Exam Platform"\nVITE_EXAM_URL="http://localhost:3099"\n' > .env
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build app
+        run: ${{ matrix.build_cmd }}
+
+      - name: Show build output
+        shell: bash
+        run: ls -lah dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prep-exam-${{ matrix.platform }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: warn
