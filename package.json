@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.26.1",
   "scripts": {
     "dev": "vite",
+    "dev:updater": "PREVIEW_UPDATER=1 vite",
     "clean": "rimraf dist dist-electron",
     "build": "rimraf dist dist-electron && vite build",
     "bytecode": "electron scripts/compile-bytecode.cjs",

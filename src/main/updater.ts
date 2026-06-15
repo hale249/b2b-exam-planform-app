@@ -33,50 +33,53 @@ const UPDATER_HTML =
       *{box-sizing:border-box}
       html,body{height:100%;margin:0}
       body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-        background:radial-gradient(900px 520px at 50% -8%,#e8f1ff 0%,#f5f8fc 55%,#f3f6fb 100%);
+        background:radial-gradient(800px 480px at 50% -6%,#eaf2ff 0%,#f6f9fc 60%,#f4f7fb 100%);
         color:#0f172a;display:flex;align-items:center;justify-content:center;
         user-select:none;-webkit-user-select:none}
-      .card{width:430px;max-width:88vw;background:#fff;border:1px solid #eef1f6;border-radius:24px;
-        box-shadow:0 24px 70px rgba(15,23,42,.10);padding:46px 40px 34px;text-align:center}
-      .icon{width:76px;height:76px;margin:0 auto 24px;border-radius:22px;
+      .card{width:400px;max-width:88vw;background:#fff;border:1px solid #eef1f6;border-radius:28px;
+        box-shadow:0 30px 80px rgba(15,23,42,.12);padding:48px 44px 32px;text-align:center}
+      .icon{width:72px;height:72px;margin:0 auto 22px;border-radius:20px;
         background:linear-gradient(135deg,#0071F9,#4f9bff);display:flex;align-items:center;
-        justify-content:center;box-shadow:0 12px 28px rgba(0,113,249,.38),0 0 0 8px rgba(0,113,249,.06);
-        animation:float 3s ease-in-out infinite}
-      @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-      .icon svg{width:38px;height:38px;fill:#fff}
-      h1{font-size:21px;font-weight:700;margin:0 0 8px;letter-spacing:-.02em}
-      .sub{font-size:14px;color:#64748b;margin:0;line-height:1.55;min-height:22px}
-      .ver{display:none;margin:14px auto 0;padding:5px 14px;border-radius:99px;
-        background:#eff6ff;color:#0071F9;font-size:12.5px;font-weight:600;width:fit-content}
-      .wrap{margin-top:26px}
-      .track{height:10px;border-radius:99px;background:#eef2f7;overflow:hidden;position:relative}
-      .fill{height:100%;width:0%;border-radius:99px;
-        background:linear-gradient(90deg,#0071F9,#5aa6ff);transition:width .3s ease;
-        box-shadow:0 0 12px rgba(0,113,249,.4)}
-      .track.indet .fill{width:38%!important;animation:slide 1.15s ease-in-out infinite}
-      @keyframes slide{0%{transform:translateX(-130%)}100%{transform:translateX(360%)}}
-      .meta{display:flex;justify-content:space-between;align-items:center;margin-top:13px;
-        font-variant-numeric:tabular-nums}
-      .meta .pct{color:#0f172a;font-weight:700;font-size:15px}
-      .meta .info{color:#94a3b8;font-size:12.5px}
-      .spin{display:none;width:26px;height:26px;border:3px solid #dbe7fb;border-top-color:#0071F9;
-        border-radius:50%;animation:spin .7s linear infinite;margin:6px auto 0}
+        justify-content:center;animation:pulse 2.4s ease-in-out infinite}
+      @keyframes pulse{0%,100%{box-shadow:0 12px 26px rgba(0,113,249,.32),0 0 0 0 rgba(0,113,249,.16)}
+        50%{box-shadow:0 12px 26px rgba(0,113,249,.32),0 0 0 14px rgba(0,113,249,0)}}
+      .icon svg{width:36px;height:36px;fill:#fff}
+      h1{font-size:18px;font-weight:650;margin:0;letter-spacing:-.01em}
+      .ver{font-size:13.5px;color:#64748b;margin:7px 0 0;min-height:18px}
+      .dl{margin-top:26px}
+      .pct{font-size:46px;font-weight:700;line-height:1;letter-spacing:-.02em;
+        font-variant-numeric:tabular-nums;margin:0 0 18px}
+      .track{height:6px;border-radius:99px;background:#eef2f7;overflow:hidden;position:relative}
+      .fill{height:100%;width:0%;border-radius:99px;position:relative;
+        background:linear-gradient(90deg,#0071F9,#5aa6ff);transition:width .3s cubic-bezier(.4,0,.2,1)}
+      .fill::after{content:'';position:absolute;inset:0;
+        background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+        animation:shine 1.5s linear infinite}
+      @keyframes shine{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+      .track.indet .fill{width:40%!important;animation:indet 1.2s ease-in-out infinite}
+      @keyframes indet{0%{margin-left:-42%}100%{margin-left:102%}}
+      .info{margin-top:13px;font-size:12.5px;color:#94a3b8;font-variant-numeric:tabular-nums;min-height:16px}
+      .spin{display:none;width:30px;height:30px;border:3px solid #e2e8f0;border-top-color:#0071F9;
+        border-radius:50%;animation:spin .7s linear infinite;margin:10px auto 0}
       @keyframes spin{to{transform:rotate(360deg)}}
-      body.installing .wrap{display:none}
-      body.installing .spin{display:block}
-      .foot{margin-top:30px;font-size:11px;color:#b6c0cf;letter-spacing:.04em;text-transform:uppercase}
+      .note{display:none;font-size:13px;color:#64748b;margin:16px 0 0;line-height:1.5}
+      body.installing .dl{display:none}
+      body.installing .spin,body.installing .note{display:block}
+      body.checking .pct{display:none}
+      .foot{margin-top:30px;font-size:10.5px;color:#c2cbd8;letter-spacing:.08em;text-transform:uppercase}
     </style></head>
     <body class="checking">
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24"><path d="M13 3h-2v8.59L8.21 8.79 6.79 10.2 12 15.41l5.21-5.21-1.42-1.41L13 11.59V3zM5 18h14v2H5z"/></svg></div>
         <h1 id="title">Checking for updates…</h1>
-        <p class="sub" id="sub">Please wait a moment.</p>
-        <div class="ver" id="ver"></div>
-        <div class="wrap">
+        <p class="ver" id="ver"></p>
+        <div class="dl">
+          <div class="pct" id="pct">0%</div>
           <div class="track indet" id="track"><div class="fill" id="fill"></div></div>
-          <div class="meta"><span class="pct" id="pct">&nbsp;</span><span class="info" id="info">&nbsp;</span></div>
+          <div class="info" id="info"></div>
         </div>
         <div class="spin"></div>
+        <p class="note">The app will restart automatically. Please do not turn off your device.</p>
         <div class="foot">PrepEdu Exam Platform</div>
       </div>
       <script>
@@ -85,29 +88,25 @@ const UPDATER_HTML =
           if(b>=1048576)return (b/1048576).toFixed(1)+' MB/s';return Math.max(1,Math.round(b/1024))+' KB/s';}
         function mb(b){return (b/1048576).toFixed(1);}
         function render(){
-          var t=document.getElementById('title'),s=document.getElementById('sub'),
-              v=document.getElementById('ver'),tr=document.getElementById('track'),
-              f=document.getElementById('fill'),p=document.getElementById('pct'),
-              inf=document.getElementById('info');
+          var t=document.getElementById('title'),v=document.getElementById('ver'),
+              tr=document.getElementById('track'),f=document.getElementById('fill'),
+              p=document.getElementById('pct'),inf=document.getElementById('info');
           if(!t)return;
           document.body.className=S.state;
-          v.style.display=S.version?'block':'none';
-          if(S.version)v.textContent='Version '+S.version;
+          v.textContent=S.version?'Version '+S.version:'';
           if(S.state==='checking'){
-            t.textContent='Checking for updates…';s.textContent='Please wait a moment.';
-            tr.classList.add('indet');p.innerHTML='&nbsp;';inf.innerHTML='&nbsp;';
+            t.textContent='Checking for updates…';
+            tr.classList.add('indet');inf.textContent='';
           }else if(S.state==='downloading'){
             t.textContent='Downloading update';
-            s.textContent='Downloading… please keep your network connected.';
             tr.classList.remove('indet');
             var pc=Math.max(0,Math.min(100,S.percent||0));
             f.style.width=pc.toFixed(0)+'%';p.textContent=pc.toFixed(0)+'%';
             var parts=[];var sp=spd(S.bps);if(sp)parts.push(sp);
             if(S.tot>0)parts.push(mb(S.tr)+' / '+mb(S.tot)+' MB');
-            inf.textContent=parts.join('  •  ');
+            inf.textContent=parts.join('   •   ');
           }else if(S.state==='installing'){
             t.textContent='Installing update';
-            s.textContent='The app will restart automatically. Please do not turn off your device.';
           }
         }
         window.upd={
@@ -120,7 +119,41 @@ const UPDATER_HTML =
     </body></html>`
   )
 
+// Dev-only: preview the updater progress screen WITHOUT a real update.
+// Run with PREVIEW_UPDATER=1 (e.g. `PREVIEW_UPDATER=1 pnpm dev` or `pnpm dev:updater`).
+// Loops checking -> downloading 0..100% -> installing so the UI can be inspected.
+const previewUpdaterUI = (win: BrowserWindow): void => {
+  const ui = (expr: string): void => {
+    if (!win.isDestroyed()) win.webContents.executeJavaScript(expr).catch(() => {})
+  }
+  win.loadURL(UPDATER_HTML)
+  win.webContents.once('did-finish-load', () => {
+    const total = 58 * 1024 * 1024
+    const runOnce = (): void => {
+      ui(`window.upd&&window.upd.status('checking')`)
+      setTimeout(() => ui(`window.upd&&window.upd.status('downloading','1.0.9')`), 900)
+      let pct = 0
+      const iv = setInterval(() => {
+        pct = Math.min(100, pct + 3)
+        const transferred = Math.round((total * pct) / 100)
+        ui(`window.upd&&window.upd.progress(${pct},${Math.round(3.2 * 1024 * 1024)},${transferred},${total})`)
+        if (pct >= 100) {
+          clearInterval(iv)
+          setTimeout(() => ui(`window.upd&&window.upd.status('installing')`), 600)
+          setTimeout(runOnce, 3500)
+        }
+      }, 200)
+    }
+    setTimeout(runOnce, 500)
+  })
+}
+
 export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void => {
+  // Dev preview of the updater UI (no real update). See previewUpdaterUI above.
+  if (process.env.PREVIEW_UPDATER === '1') {
+    previewUpdaterUI(win)
+    return
+  }
   // electron-updater only works in a packaged app. In dev, go straight in —
   // unless TEST_UPDATER=1, which forces the gate to run against a local
   // dev-app-update.yml so the flow/UI can be exercised without packaging.
