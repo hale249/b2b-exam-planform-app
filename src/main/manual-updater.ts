@@ -121,6 +121,14 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
 
   ipcMain.handle(IPC_CONSTANTS.UPDATER_INSTALL, () => {
     if (!updaterEnabled()) return
+    // Safety net: NEVER relaunch into an install while an exam is in progress
+    // (window is in kiosk mode). A mid-exam restart would wipe the student's
+    // session. The update stays downloaded and installs on the next launch.
+    const win = getWindow()
+    if (win && !win.isDestroyed() && win.isKiosk()) {
+      console.warn('[ManualUpdater] install blocked — exam in progress (kiosk)')
+      return
+    }
     try {
       // isSilent=true, isForceRunAfter=true → reinstall and reopen automatically.
       autoUpdater.quitAndInstall(true, true)
