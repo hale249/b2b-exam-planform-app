@@ -19,19 +19,23 @@ import {
 import { runUpdateGate } from './updater'
 import { registerManualUpdater } from './manual-updater'
 import { startBlocklistSync, stopBlocklistSync } from './services/blocklist-sync'
+import {
+  reassertScreenRecordingState,
+  startScreenRecordingGuard,
+  stopScreenRecordingGuard
+} from './screen-recording-guard'
 import { emitAppEvent, startAppEvents, stopAppEvents } from './services/app-events'
 import { initLogger, logger } from './logger'
+import { getAppName } from './app-name'
 import { IPC_CONSTANTS } from '../shared/ipc-channels'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
-const APP_NAME = import.meta.env.VITE_APP_NAME
+const APP_NAME = getAppName()
 
 let mainWindow: BrowserWindow | null = null
 let allowQuit = false
 let forceQuit = false
 let pendingQuitConfirmId: string | null = null
-// True while the exam window has lost OS focus during kiosk (so we emit the
-// focus-lost / focus-regained pair once each, not on every refocus tick).
 let appFocusLost = false
 
 // Force the exam window in front of every other app (Chrome, etc.). A plain
@@ -79,11 +83,12 @@ const createWindow = (): void => {
         id,
         icon: '',
         iconColor: '',
-        title: 'Quit Application',
-        message: 'Are you sure you want to quit?',
+        title: 'Quit the app?',
+        message:
+          'Are you sure you want to quit? If an exam is in progress, quitting may end your session.',
         confirmLabel: 'Quit',
         confirmColor: '#E20D2C',
-        cancelLabel: 'Cancel'
+        cancelLabel: 'Stay in exam'
       })
     }
   })
@@ -184,6 +189,9 @@ const createWindow = (): void => {
   mainWindow.webContents.on('did-finish-load', () => {
     // Re-apply content protection after every page load.
     mainWindow?.setContentProtection(true)
+    // Restore the recording cover if a capture is in progress (the overlay
+    // resets to hidden on every load).
+    reassertScreenRecordingState(mainWindow)
     // Only a successful EXAM load resets the crash guards. The recovery/fatal
     // screens are data: URLs and fire did-finish-load too — counting them as
     // success would wipe the loop guards and recover forever instead of ever
@@ -228,6 +236,9 @@ const createWindow = (): void => {
   initSecurityLock(() => mainWindow)
   initCrashRecovery(() => mainWindow, EXAM_URL)
   startProcessMonitor(mainWindow)
+  // macOS-only: detect screen RECORDING (which content protection can't block on
+  // macOS) and cover the exam while it's active.
+  startScreenRecordingGuard(() => mainWindow)
   startDisplayMonitor(mainWindow)
 }
 
@@ -613,6 +624,7 @@ const registerBlockedShortcuts = (): void => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   stopProcessMonitor()
+  stopScreenRecordingGuard()
   stopBlocklistSync()
   stopAppEvents()
   if (displayIntervalId) clearInterval(displayIntervalId)

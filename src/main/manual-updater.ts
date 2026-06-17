@@ -22,10 +22,9 @@ import { applyUpdateChannel } from './updater-channel'
 //   updater:downloaded  { version }
 //   updater:error       { message }
 //
-// electron-updater only works in a packaged app. In dev we report "no update"
-// unless TEST_UPDATER=1 forces it to run against dev-app-update.yml.
+// electron-updater only works in a packaged app. In dev we report "no update".
 
-const updaterEnabled = (): boolean => app.isPackaged || process.env.TEST_UPDATER === '1'
+const updaterEnabled = (): boolean => app.isPackaged
 
 let bound = false
 let downloading = false
@@ -50,7 +49,6 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     autoUpdater.autoInstallOnAppQuit = false
     autoUpdater.logger = console
     applyUpdateChannel()
-    if (process.env.TEST_UPDATER === '1') autoUpdater.forceDevUpdateConfig = true
 
     autoUpdater.on('download-progress', (p) => {
       send(IPC_CONSTANTS.UPDATER_PROGRESS, {

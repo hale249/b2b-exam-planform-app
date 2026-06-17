@@ -27,7 +27,8 @@ dist-electron
 
 *.tsbuildinfo
 .env
-dev-app-update.yml
+
+electron-builder.generated.json
 
 # Use pnpm, not npm
 package-lock.json

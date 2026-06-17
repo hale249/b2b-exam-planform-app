@@ -40,11 +40,11 @@ export const registerIpcHandlers = (): void => {
     setBlockedProcessesActive(blocked.length > 0)
     reportBlockedApps(blocked)
 
-    if (blocked.length > 0) {
-      const win = BrowserWindow.fromWebContents(event.sender)
-      if (win && !win.isDestroyed()) {
-        win.webContents.send(IPC_CONSTANTS.CHECK_BLOCKED_PROCESSES, blocked)
-      }
+    // Push the result to the overlay — INCLUDING the empty list — so it clears
+    // immediately when the app is gone, not only when a violation appears.
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IPC_CONSTANTS.CHECK_BLOCKED_PROCESSES, blocked)
     }
 
     return blocked
@@ -61,8 +61,11 @@ export const registerIpcHandlers = (): void => {
     reportBlockedApps(blocked)
 
     const hasViolation = blocked.length > 0 || displayCount > 1
+    // Push the current state EVERY time — including when clean — so the overlay
+    // clears as soon as the violation is resolved instead of lingering until the
+    // next background scan.
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (hasViolation && win && !win.isDestroyed()) {
+    if (win && !win.isDestroyed()) {
       win.webContents.send(IPC_CONSTANTS.FORCE_SECURITY_CHECK, {
         blockedProcesses: blocked,
         displayCount

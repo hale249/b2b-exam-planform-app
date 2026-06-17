@@ -57,6 +57,7 @@ const GROUP_WINDOW_MS = 60_000
 const IMPORTANT_EVENTS = new Set<string>([
   'app_blocked_process_detected',
   'app_screenshot_blocked',
+  'app_screen_recording_detected',
   'app_kiosk_exit_attempt',
   'app_exam_exit',
   'app_display_changed'

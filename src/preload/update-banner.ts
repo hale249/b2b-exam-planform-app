@@ -96,7 +96,7 @@ function render(): void {
     ;(el.querySelector('#__upd_go') as HTMLElement).onclick = startDownload
     ;(el.querySelector('#__upd_later') as HTMLElement).onclick = hide
   } else if (state === 'downloading') {
-    tt.textContent = 'Downloading update'
+    tt.textContent = 'Downloading update…'
     sb.textContent = version ? 'Version ' + version : ''
     fill.style.width = percent.toFixed(0) + '%'
     pctEl.textContent = percent.toFixed(0) + '%'
