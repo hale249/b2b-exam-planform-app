@@ -41,7 +41,7 @@ function injectStyles(): void {
       background: #ffffff;
       border-radius: 20px;
       padding: 32px 32px 28px;
-      max-width: 460px;
+      max-width: 560px;
       width: 92%;
       font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
       box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);

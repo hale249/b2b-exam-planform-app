@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
 
-import { armExamLock, disarmExamLock } from '../exam-lock'
+import { armExamLock, disarmExamLock, isExamLocked } from '../exam-lock'
 import { clearExamContext, setAuthToken, setExamContext } from '../services/app-events'
 import { checkBlockedApps, reportBlockedApps } from '../services/process-blocker'
 import {
@@ -93,6 +93,6 @@ export const registerIpcHandlers = (): void => {
 
   ipcMain.handle(IPC_CONSTANTS.GET_FULLSCREEN, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    return win ? win.isKiosk() : false
+    return win ? isExamLocked(win) : false
   })
 }

@@ -1,4 +1,6 @@
 import { BrowserWindow, globalShortcut } from 'electron'
+
+import { isExamLocked } from './exam-lock'
 // Single source of truth for whether a security violation (prohibited app or
 // extra display) is currently active. While active we LOOSEN the kiosk lockdown
 // just enough that the student can switch to the offending app and close it:
@@ -53,6 +55,6 @@ const apply = (): void => {
     globalShortcut.register('Alt+Tab', () => {})
     globalShortcut.register('CommandOrControl+Tab', () => {})
     const win = getWindow()
-    if (win && !win.isDestroyed() && win.isKiosk()) win.focus()
+    if (win && isExamLocked(win)) win.focus()
   }
 }

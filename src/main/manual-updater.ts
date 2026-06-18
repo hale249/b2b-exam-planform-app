@@ -5,6 +5,7 @@ import { autoUpdater } from 'electron-updater'
 
 import { IPC_CONSTANTS } from '../shared/ipc-channels'
 import { applyUpdateChannel } from './updater-channel'
+import { isExamLocked } from './exam-lock'
 
 // User-initiated ("manual") update flow shown ON the batch screen.
 //
@@ -123,8 +124,8 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     // (window is in kiosk mode). A mid-exam restart would wipe the student's
     // session. The update stays downloaded and installs on the next launch.
     const win = getWindow()
-    if (win && !win.isDestroyed() && win.isKiosk()) {
-      console.warn('[ManualUpdater] install blocked — exam in progress (kiosk)')
+    if (win && isExamLocked(win)) {
+      console.warn('[ManualUpdater] install blocked — exam in progress (locked)')
       return
     }
     try {
@@ -143,7 +144,7 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
   const checkAndNotify = async (): Promise<void> => {
     if (!updaterEnabled()) return
     const win = getWindow()
-    if (!win || win.isDestroyed() || win.isKiosk() || downloading) return
+    if (!win || win.isDestroyed() || isExamLocked(win) || downloading) return
     ensureBound()
     try {
       const result = await autoUpdater.checkForUpdates()

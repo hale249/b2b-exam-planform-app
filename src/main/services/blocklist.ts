@@ -38,13 +38,12 @@ export const getEffectiveBlockedProcesses = (): BlockedProcess[] => {
 }
 
 // A pattern matches when it appears as a path/word token in `ps aux` / tasklist
-// output or a window title. The regex (same as before, no `g` flag → stateless
-// and safe to reuse across scans) is compiled once and cached.
+// `g` flag → stateless and safe to reuse across scans; compiled once and cached.
 const compilePatterns = (list: BlockedProcess[]): CompiledBlockedProcess[] =>
   list.map((p) => ({
     name: p.name,
     regexes: p.patterns.map(
-      (pattern) => new RegExp(`(^|[\\s/\\\\",])${pattern}([\\s.,"\\\\]|$)`, 'm')
+      (pattern) => new RegExp(`(^|[\\s/\\\\",])${pattern}([\\s.,"\\\\/]|$)`, 'm')
     )
   }))
 
