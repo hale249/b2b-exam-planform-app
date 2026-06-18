@@ -145,6 +145,10 @@ export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void =
   autoUpdater.autoDownload = true
   // We install in-gate (quitAndInstall) — don't also defer to app quit.
   autoUpdater.autoInstallOnAppQuit = false
+  // Full download, not differential: the blockmap/range-based differential path
+  // can stall at a low percent (and retry-spam 'error'), which here would freeze
+  // the startup gate. A plain full download is the reliable choice.
+  autoUpdater.disableDifferentialDownload = true
   autoUpdater.logger = console
   applyUpdateChannel()
 

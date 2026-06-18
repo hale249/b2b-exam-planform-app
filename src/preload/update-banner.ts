@@ -8,7 +8,7 @@ import { IPC_CONSTANTS } from '../shared/ipc-channels'
 // Flow: available -> [Update now] -> downloading (progress) -> ready -> [Restart].
 
 let el: HTMLDivElement | null = null
-let state: 'available' | 'downloading' | 'ready' | 'restarting' = 'available'
+let state: 'available' | 'downloading' | 'ready' | 'restarting' | 'error' = 'available'
 let version = ''
 let percent = 0
 
@@ -109,6 +109,14 @@ function render(): void {
       '<button class="__upd_btn __upd_ghost" id="__upd_later">Later</button>'
     ;(el.querySelector('#__upd_restart') as HTMLElement).onclick = restart
     ;(el.querySelector('#__upd_later') as HTMLElement).onclick = hide
+  } else if (state === 'error') {
+    tt.textContent = 'Update failed'
+    sb.textContent = 'Download was interrupted. Please try again.'
+    act.innerHTML =
+      '<button class="__upd_btn __upd_primary" id="__upd_retry">Retry</button>' +
+      '<button class="__upd_btn __upd_ghost" id="__upd_later">Later</button>'
+    ;(el.querySelector('#__upd_retry') as HTMLElement).onclick = startDownload
+    ;(el.querySelector('#__upd_later') as HTMLElement).onclick = hide
   } else {
     tt.textContent = 'Restarting to update…'
     sb.textContent = 'The app will reopen automatically.'
@@ -130,8 +138,10 @@ function show(): void {
 }
 
 ipcRenderer.on(IPC_CONSTANTS.UPDATER_AVAILABLE, (_e, info: { version: string }) => {
+  // Never interrupt an in-progress flow with a fresh "update available" toast —
+  // while downloading / ready / restarting / retrying, keep the current banner.
+  if (state !== 'available') return
   version = info?.version || ''
-  state = 'available'
   show()
 })
 
@@ -148,9 +158,11 @@ ipcRenderer.on(IPC_CONSTANTS.UPDATER_DOWNLOADED, (_e, info: { version: string })
 })
 
 ipcRenderer.on(IPC_CONSTANTS.UPDATER_ERROR, () => {
-  // Let the user retry: revert to the available state on a download error.
+  // A download error shows an explicit "Update failed / Retry" state instead of
+  // silently reverting to "Update available" (which looked like a brand-new toast
+  // popping up mid-download). Only react if a download was actually running.
   if (state === 'downloading') {
-    state = 'available'
+    state = 'error'
     render()
   }
 })

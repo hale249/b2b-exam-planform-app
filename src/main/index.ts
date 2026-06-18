@@ -512,8 +512,12 @@ const registerBlockedShortcuts = (): void => {
     mainWindow.webContents.send(IPC_CONSTANTS.SHOW_CONFIRM, { id, ...sendOptions })
   }
 
-  // Reload shortcuts
-  const confirmReload = (ignoreCache: boolean) => {
+  // Reload shortcuts. `exitFullscreen` is only set by the status-bar "Reload"
+  // button: per product decision it always leaves kiosk (so a reload that lands
+  // back on the batch list is no longer stuck in fullscreen). The Cmd+R / F5
+  // shortcuts keep the old behaviour — stay fullscreen across an in-exam reload
+  // (B2B-2498) — so a mid-exam reload by keyboard never drops the lockdown.
+  const confirmReload = (ignoreCache: boolean, exitFullscreen = false) => {
     showConfirm({
       icon: '🔄',
       iconColor: '#3b82f6',
@@ -523,9 +527,13 @@ const registerBlockedShortcuts = (): void => {
       confirmColor: '#2563eb',
       cancelLabel: 'Cancel',
       onConfirm: () => {
-        // Stay in native fullscreen across the reload — exiting kiosk here would
-        // play the macOS Space-exit animation and flash the desktop (B2B-2498).
         bypassUnload()
+        if (exitFullscreen) {
+          // Leave kiosk and suppress the page's late setFullScreen(true) so the
+          // reloaded page (e.g. the batch list) doesn't immediately re-arm.
+          suppressFullscreenRequests(2000)
+          exitExamLock()
+        }
         if (ignoreCache) {
           mainWindow?.webContents.reloadIgnoringCache()
         } else {
@@ -572,7 +580,7 @@ const registerBlockedShortcuts = (): void => {
 
   // Exam status-bar buttons reuse the exact same confirm flows as the shortcuts,
   // so a button press is never a one-click destructive action.
-  ipcMain.on(IPC_CONSTANTS.STATUSBAR_RELOAD, () => confirmReload(false))
+  ipcMain.on(IPC_CONSTANTS.STATUSBAR_RELOAD, () => confirmReload(false, true))
   ipcMain.on(IPC_CONSTANTS.STATUSBAR_EXIT_HOME, () => confirmGoHome('statusbar'))
   // Esc in fullscreen → confirm → go to the home page (STAYING fullscreen).
   // Do NOT reload(): reloading keeps the in-exam URL, and the web app re-enters

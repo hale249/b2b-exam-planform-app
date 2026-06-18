@@ -48,6 +48,13 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     autoUpdater.removeAllListeners()
     autoUpdater.autoDownload = false // manual: the user clicks to download
     autoUpdater.autoInstallOnAppQuit = false
+    // Force a full download instead of a differential (blockmap) one. The
+    // differential path fetches changed blocks via many HTTP range requests and
+    // is prone to STALLING at a low percent (seen: stuck ~2% for minutes on a
+    // healthy network) and to emitting transient 'error' events while it retries
+    // — which also made the banner flip back to "update available" mid-download.
+    // A plain full download streams reliably from the same feed.
+    autoUpdater.disableDifferentialDownload = true
     autoUpdater.logger = console
     applyUpdateChannel()
 

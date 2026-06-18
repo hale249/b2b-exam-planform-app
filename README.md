@@ -1,104 +1,114 @@
 # B2B Exam Platform App
 
-Ứng dụng Electron cho nền tảng thi trực tuyến (Exam Platform) với các cơ chế chống gian lận. Được xây dựng bằng Electron + Vue 3 + Vite + TypeScript + TailwindCSS.
+Electron desktop app for an online exam platform with anti-cheating safeguards (kiosk lockdown, blocked-process detection, screen-capture protection, native event tracking). Built with Electron + Vue 3 + Vite + TypeScript + TailwindCSS.
 
-## Yêu cầu môi trường
+## Requirements
 
-- **Node.js**: >= 18 (khuyến nghị 20 LTS)
-- **Trình quản lý gói**: `pnpm` (khuyến nghị, dự án có `pnpm-workspace.yaml` và `pnpm-lock.yaml`) hoặc `npm`
-- **Hệ điều hành**: macOS, Windows, hoặc Linux
-- Để build bản cài đặt cho Windows / macOS / Linux cần máy chạy đúng hệ điều hành tương ứng (hoặc cấu hình cross-build).
+- **Node.js**: `22` (required — CI builds on Node 22; other major versions are not supported).
+- **Package manager**: `pnpm` (recommended — the repo ships `pnpm-workspace.yaml` and `pnpm-lock.yaml`) or `npm`.
+- **OS**: macOS, Windows, or Linux.
+- Building an installer for a given platform requires running on that same OS (or a configured cross-build).
 
-## Cài đặt
+## Installation
 
 ```bash
-# Clone repo (nếu chưa có)
+# Clone the repo (if you haven't already)
 git clone <repo-url>
 cd b2b-exam-planform-app
 
-# Cài dependencies
+# Install dependencies
 pnpm install
-# hoặc
+# or
 npm install
 ```
 
-## Cấu hình biến môi trường
+## Environment configuration
 
-Tạo file `.env` ở thư mục gốc (sao chép từ `.env.example`):
+Create a `.env` file in the project root (copy from `.env.example`):
 
 ```bash
 cp .env.example .env
 ```
 
-Các biến cần cấu hình:
+Variables:
 
-| Biến | Mô tả |
-| --- | --- |
-| `VITE_APP_NAME` | Tên hiển thị của ứng dụng (mặc định: `Exam Platform`) |
-| `VITE_EXAM_URL` | URL trang thi sẽ được tải trong cửa sổ Electron |
+| Variable | Required | Description |
+| --- | --- | --- |
+| `VITE_APP_ENVIRONMENT` | optional | `production` \| `staging` \| `development` \| `local`. Drives the app identity (window title, installed app name, `appId`, and the auto-update release channel). Defaults to `production`. |
+| `VITE_EXAM_URL` | **yes** | URL of the exam page loaded inside the Electron window. |
+| `VITE_API_ANTI_URL` | yes | Base URL of the anti-cheating API (event tracking / blocklist sync). |
+| `VITE_APP_HMAC_SECRET` | yes | HMAC secret used to sign anti-cheating client requests. Keep secret — never commit a real value. |
+| `VITE_ALLOW_SCREENSHOT` | optional | `"true"` disables screen-capture protection (screenshots/recording) for dev/QA. **Must be `"false"` (or empty) in builds shipped to students.** |
+| `VITE_ALLOW_DEVTOOLS` | optional | `"true"` keeps DevTools available in a packaged build (F12 / Cmd+Shift+I toggles it). **Must be `"false"` (or empty) in shipped builds.** |
 
-## Chạy ở chế độ dev
+> `.env` is gitignored. Do not place real secrets (e.g. `VITE_APP_HMAC_SECRET`) in `.env.example`.
+
+## Development
 
 ```bash
 pnpm dev
-# hoặc
+# or
 npm run dev
 ```
 
-Lệnh này khởi động Vite dev server cùng với Electron, hỗ trợ hot-reload cho cả tiến trình `main`, `preload` và `renderer`.
+Starts the Vite dev server together with Electron, with hot-reload for the `main`, `preload`, and `renderer` processes.
 
-## Build production
+## Production build
 
 ```bash
-# Build assets (Vite + tsc) — không đóng gói installer
+# Build assets only (Vite) — no installer
 pnpm build
 
-# Chạy thử bản đã build mà không đóng gói
+# Build and run the unpackaged app (debugging, no installer)
 pnpm build:unpack
 
-# Đóng gói installer theo nền tảng
-pnpm build:win     # Windows (.exe NSIS)
-pnpm build:mac     # macOS (.dmg, x64 + arm64)
-pnpm build:linux   # Linux (AppImage)
+# Package an installer per platform
+pnpm build:win     # Windows (NSIS .exe, x64)
+pnpm build:mac     # macOS (.dmg + .zip, x64 + arm64)
+pnpm build:linux   # Linux (AppImage, x64)
 ```
 
-Kết quả build nằm trong thư mục `dist/`.
+Each packaging step runs the full pipeline: Vite build → V8 bytecode compile → app-identity generation (`electron-builder.generated.json` from your `.env`) → `electron-builder`. Output is written to `dist/`.
 
-## Cấu trúc thư mục
+Releases are produced by GitHub Actions on tag push: `v*` → production, `stg_v*` → staging, `dev_v*` → dev (the channel is encoded in the version's prerelease tag), then published to GitHub Releases for auto-update.
+
+## Project structure
 
 ```
 .
-├── build/                  # Tài nguyên cho electron-builder (entitlements, icon, ...)
-├── resources/              # Tài nguyên runtime đóng gói cùng app
+├── build/                  # electron-builder resources (entitlements, icon, ...)
+├── resources/              # Runtime resources bundled with the app
+├── scripts/                # Build helpers (bytecode compile, app-identity)
 ├── src/
-│   ├── main/               # Tiến trình main của Electron
-│   │   ├── commands/
-│   │   ├── constants/
-│   │   ├── handlers/       # IPC handlers
-│   │   ├── services/
-│   │   ├── utils/
-│   │   └── index.ts        # Entry của tiến trình main
-│   ├── preload/            # Script preload (cầu nối main ↔ renderer)
-│   └── renderer/           # Ứng dụng Vue 3 (UI)
-├── electron-builder.json   # Cấu hình đóng gói
-├── vite.config.ts          # Cấu hình Vite + plugin Electron
+│   ├── main/               # Electron main process
+│   │   ├── handlers/       #   IPC handlers
+│   │   ├── services/       #   anti-cheat, blocklist, network status, ...
+│   │   └── index.ts        #   main entry
+│   ├── preload/            # Preload scripts (main ↔ renderer bridge, overlays)
+│   ├── renderer/           # Vue 3 app (UI)
+│   └── shared/             # Shared constants (IPC channels, ...)
+├── electron-builder.json   # Packaging config (base; CI uses the generated copy)
+├── vite.config.ts          # Vite + Electron plugin config
 └── package.json
 ```
 
-## Scripts hữu ích
+## Useful scripts
 
-| Script | Mô tả |
+| Script | Description |
 | --- | --- |
-| `pnpm dev` | Chạy app ở chế độ phát triển |
-| `pnpm clean` | Xoá thư mục `dist` và `dist-electron` |
-| `pnpm build` | Clean + build production |
-| `pnpm start` | Chạy Electron với bản build hiện có |
-| `pnpm build:unpack` | Build và xuất thư mục app chưa đóng gói (debug) |
-| `pnpm build:win` / `:mac` / `:linux` | Đóng gói installer theo nền tảng |
+| `pnpm dev` | Run the app in development mode |
+| `pnpm clean` | Remove `dist/` and `dist-electron/` |
+| `pnpm build` | Clean + build production assets |
+| `pnpm build:unpack` | Build and emit the unpackaged app (debug) |
+| `pnpm build:win` / `:mac` / `:linux` | Package an installer per platform |
+| `pnpm start` | Run Electron against the current build |
+| `pnpm typecheck` | Type-check the main/preload/shared sources |
+| `pnpm lint` / `pnpm lint:fix` | Lint (and auto-fix) |
+| `pnpm format` / `pnpm format:check` | Format with Prettier |
 
-## Khắc phục sự cố
+## Troubleshooting
 
-- **Electron không khởi động sau khi `pnpm dev`**: kiểm tra Node.js >= 18, xoá `node_modules` và cài lại.
-- **Trang thi không hiển thị**: kiểm tra biến `VITE_EXAM_URL` trong `.env` đã trỏ đúng URL hay chưa.
-- **Build macOS lỗi ký số**: build thử với `pnpm build:unpack` trước; với bản phân phối cần cấu hình chứng chỉ Apple Developer cho `electron-builder`.
-- **Reset hoàn toàn**: `pnpm clean && rm -rf node_modules && pnpm install`.
+- **Electron won't start after `pnpm dev`**: ensure Node.js is `22`; delete `node_modules` and reinstall.
+- **Exam page doesn't load**: check that `VITE_EXAM_URL` in `.env` points to the correct URL.
+- **macOS code-signing errors**: try `pnpm build:unpack` first; distribution builds require an Apple Developer certificate configured for `electron-builder`.
+- **Full reset**: `pnpm clean && rm -rf node_modules && pnpm install`.
