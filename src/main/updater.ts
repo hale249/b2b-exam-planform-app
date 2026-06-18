@@ -96,7 +96,7 @@ const UPDATER_HTML =
             t.textContent='Checking for updates…';
             tr.classList.add('indet');inf.textContent='';
           }else if(S.state==='downloading'){
-            t.textContent='Downloading update';
+            t.textContent='Downloading update…';
             tr.classList.remove('indet');
             var pc=Math.max(0,Math.min(100,S.percent||0));
             f.style.width=pc.toFixed(0)+'%';p.textContent=pc.toFixed(0)+'%';
@@ -104,7 +104,7 @@ const UPDATER_HTML =
             if(S.tot>0)parts.push(mb(S.tr)+' / '+mb(S.tot)+' MB');
             inf.textContent=parts.join('   •   ');
           }else if(S.state==='installing'){
-            t.textContent='Installing update';
+            t.textContent='Installing update…';
           }
         }
         window.upd={
@@ -118,15 +118,11 @@ const UPDATER_HTML =
   )
 
 export const runUpdateGate = (win: BrowserWindow, onProceed: () => void): void => {
-  // electron-updater only works in a packaged app. In dev, go straight in —
-  // unless TEST_UPDATER=1, which forces the gate to run against a local
-  // dev-app-update.yml so the flow/UI can be exercised without packaging.
-  const isTest = process.env.TEST_UPDATER === '1'
-  if (!app.isPackaged && !isTest) {
+  // electron-updater only works in a packaged app. In dev, go straight in.
+  if (!app.isPackaged) {
     onProceed()
     return
   }
-  if (isTest) autoUpdater.forceDevUpdateConfig = true
 
   let settled = false
   const proceed = (): void => {

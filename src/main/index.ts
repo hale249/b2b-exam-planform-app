@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, session } from 'electron'
 import { join } from 'path'
-import { armExamLock, disarmExamLock } from './exam-lock'
+import { armExamLock, disarmExamLock, isExamLocked } from './exam-lock'
 import { startProcessMonitor, stopProcessMonitor } from './handlers/process-blocker'
 import { registerIpcHandlers } from './handlers/ipc'
 import {
@@ -19,19 +19,27 @@ import {
 import { runUpdateGate } from './updater'
 import { registerManualUpdater } from './manual-updater'
 import { startBlocklistSync, stopBlocklistSync } from './services/blocklist-sync'
+import { startNetworkStatus, stopNetworkStatus } from './services/network-status'
+import {
+  reassertScreenRecordingState,
+  startScreenRecordingGuard,
+  stopScreenRecordingGuard
+} from './screen-recording-guard'
 import { emitAppEvent, startAppEvents, stopAppEvents } from './services/app-events'
 import { initLogger, logger } from './logger'
+import { getAppName } from './app-name'
 import { IPC_CONSTANTS } from '../shared/ipc-channels'
 
 const EXAM_URL = import.meta.env.VITE_EXAM_URL
-const APP_NAME = import.meta.env.VITE_APP_NAME
+const APP_NAME = getAppName()
+
+const ALLOW_SCREENSHOT = import.meta.env.VITE_ALLOW_SCREENSHOT === 'true'
+const ALLOW_DEVTOOLS = import.meta.env.VITE_ALLOW_DEVTOOLS === 'true'
 
 let mainWindow: BrowserWindow | null = null
 let allowQuit = false
 let forceQuit = false
 let pendingQuitConfirmId: string | null = null
-// True while the exam window has lost OS focus during kiosk (so we emit the
-// focus-lost / focus-regained pair once each, not on every refocus tick).
 let appFocusLost = false
 
 // Force the exam window in front of every other app (Chrome, etc.). A plain
@@ -59,7 +67,7 @@ const createWindow = (): void => {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      devTools: !isProduction
+      devTools: !isProduction || ALLOW_DEVTOOLS
     }
   })
 
@@ -79,11 +87,12 @@ const createWindow = (): void => {
         id,
         icon: '',
         iconColor: '',
-        title: 'Quit Application',
-        message: 'Are you sure you want to quit?',
+        title: 'Quit the app?',
+        message:
+          'Are you sure you want to quit? If an exam is in progress, quitting may end your session.',
         confirmLabel: 'Quit',
         confirmColor: '#E20D2C',
-        cancelLabel: 'Cancel'
+        cancelLabel: 'Stay in exam'
       })
     }
   })
@@ -101,7 +110,7 @@ const createWindow = (): void => {
   // student can switch to the prohibited app and close it.
   mainWindow.on('blur', () => {
     if (isSecurityBlockActive()) return
-    if (mainWindow && !mainWindow.isDestroyed() && !forceQuit && mainWindow.isKiosk()) {
+    if (mainWindow && !mainWindow.isDestroyed() && !forceQuit && isExamLocked(mainWindow)) {
       mainWindow.webContents.send(IPC_CONSTANTS.TAB_VIOLATION)
       if (!appFocusLost) {
         appFocusLost = true
@@ -112,7 +121,7 @@ const createWindow = (): void => {
       // student switched to — app.focus({ steal: true }) + moveTop() do. Run it
       // immediately and again once the app-switch settles.
       const refocus = (): void => {
-        if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isKiosk()) return
+        if (!mainWindow || !isExamLocked(mainWindow)) return
         bringToFront()
       }
       refocus()
@@ -127,7 +136,7 @@ const createWindow = (): void => {
     }
   })
 
-  mainWindow.setContentProtection(true)
+  mainWindow.setContentProtection(!ALLOW_SCREENSHOT)
 
   // Only show window after EXAM_URL is fully loaded (no white flash).
   // Then force it in front: the student may have switched to another app
@@ -183,7 +192,10 @@ const createWindow = (): void => {
 
   mainWindow.webContents.on('did-finish-load', () => {
     // Re-apply content protection after every page load.
-    mainWindow?.setContentProtection(true)
+    mainWindow?.setContentProtection(!ALLOW_SCREENSHOT)
+    // Restore the recording cover if a capture is in progress (the overlay
+    // resets to hidden on every load).
+    reassertScreenRecordingState(mainWindow)
     // Only a successful EXAM load resets the crash guards. The recovery/fatal
     // screens are data: URLs and fire did-finish-load too — counting them as
     // success would wipe the loop guards and recover forever instead of ever
@@ -228,7 +240,13 @@ const createWindow = (): void => {
   initSecurityLock(() => mainWindow)
   initCrashRecovery(() => mainWindow, EXAM_URL)
   startProcessMonitor(mainWindow)
+  // macOS-only: detect screen RECORDING (which content protection can't block on
+  // macOS) and cover the exam while it's active. Skipped when screenshots are
+  // explicitly allowed (dev/QA) so the cover doesn't ruin captures/recordings.
+  if (!ALLOW_SCREENSHOT) startScreenRecordingGuard(() => mainWindow)
   startDisplayMonitor(mainWindow)
+  // Live Wi-Fi signal for the exam status bar (best-effort, native).
+  startNetworkStatus(() => mainWindow)
 }
 
 let displayIntervalId: ReturnType<typeof setInterval> | null = null
@@ -387,12 +405,14 @@ const registerBlockedShortcuts = (): void => {
       emitAppEvent('app_screenshot_blocked', { shortcut: accelerator })
     )
   }
-  blockScreenshot('PrintScreen')
-  blockScreenshot('CommandOrControl+Shift+3')
-  blockScreenshot('CommandOrControl+Shift+4')
-  blockScreenshot('CommandOrControl+Shift+5')
-  blockScreenshot('CommandOrControl+Control+Shift+3')
-  blockScreenshot('CommandOrControl+Control+Shift+4')
+  if (!ALLOW_SCREENSHOT) {
+    blockScreenshot('PrintScreen')
+    blockScreenshot('CommandOrControl+Shift+3')
+    blockScreenshot('CommandOrControl+Shift+4')
+    blockScreenshot('CommandOrControl+Shift+5')
+    blockScreenshot('CommandOrControl+Control+Shift+3')
+    blockScreenshot('CommandOrControl+Control+Shift+4')
+  }
 
   // Block Alt+Tab / Cmd+Tab. NOTE: on macOS Cmd+Tab (and Mission Control's
   // Control+Arrow) are OS-reserved — register() returns false and the switcher
@@ -456,7 +476,7 @@ const registerBlockedShortcuts = (): void => {
         if (confirmed) {
           // Quitting the app while in the locked exam = an exit. Persisted
           // synchronously on quit (stopAppEvents), synced on next launch.
-          if (mainWindow?.isKiosk()) emitAppEvent('app_exam_exit', { via: 'quit' })
+          if (mainWindow && isExamLocked(mainWindow)) emitAppEvent('app_exam_exit', { via: 'quit' })
           forceQuit = true
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.destroy()
@@ -503,8 +523,9 @@ const registerBlockedShortcuts = (): void => {
       confirmColor: '#2563eb',
       cancelLabel: 'Cancel',
       onConfirm: () => {
+        // Stay in native fullscreen across the reload — exiting kiosk here would
+        // play the macOS Space-exit animation and flash the desktop (B2B-2498).
         bypassUnload()
-        exitExamLock()
         if (ignoreCache) {
           mainWindow?.webContents.reloadIgnoringCache()
         } else {
@@ -517,8 +538,8 @@ const registerBlockedShortcuts = (): void => {
   globalShortcut.register('CommandOrControl+R', () => confirmReload(false))
   globalShortcut.register('F5', () => confirmReload(false))
 
-  // Go back to home — Ctrl/Cmd+Home
-  globalShortcut.register('CommandOrControl+Home', () => {
+  // Go back to home — Ctrl/Cmd+Home (and the status bar "Exit" button).
+  const confirmGoHome = (via: 'home' | 'statusbar') => {
     showConfirm({
       icon: '🏠',
       iconColor: '#f59e0b',
@@ -530,14 +551,30 @@ const registerBlockedShortcuts = (): void => {
       cancelLabel: 'Stay',
       onConfirm: () => {
         // Only count as an exam exit if we were actually in the locked exam.
-        if (mainWindow?.isKiosk()) emitAppEvent('app_exam_exit', { via: 'home' })
+        if (mainWindow && isExamLocked(mainWindow)) emitAppEvent('app_exam_exit', { via })
         bypassUnload()
-        exitExamLock()
+        if (via === 'statusbar') {
+          // The visible "Exit" button is an explicit "leave the exam" action, so
+          // it really exits fullscreen (kiosk) — unlike the silent Cmd+Home
+          // shortcut, which stays fullscreen to avoid the macOS Space-exit flash
+          // (B2B-2498). Suppress any late set-fullscreen(true) the leaving page
+          // may still fire, so kiosk doesn't immediately re-arm on the way home.
+          suppressFullscreenRequests(2000)
+          exitExamLock()
+        }
+        // Cmd+Home navigates home WHILE STAYING fullscreen — do not disarm kiosk
+        // there, or macOS plays the Space-exit animation and flashes the desktop.
         mainWindow?.loadURL(EXAM_URL)
       }
     })
-  })
-  // Esc in fullscreen → confirm → exit fullscreen + go to the home page.
+  }
+  globalShortcut.register('CommandOrControl+Home', () => confirmGoHome('home'))
+
+  // Exam status-bar buttons reuse the exact same confirm flows as the shortcuts,
+  // so a button press is never a one-click destructive action.
+  ipcMain.on(IPC_CONSTANTS.STATUSBAR_RELOAD, () => confirmReload(false))
+  ipcMain.on(IPC_CONSTANTS.STATUSBAR_EXIT_HOME, () => confirmGoHome('statusbar'))
+  // Esc in fullscreen → confirm → go to the home page (STAYING fullscreen).
   // Do NOT reload(): reloading keeps the in-exam URL, and the web app re-enters
   // fullscreen as soon as it sees the exam still in progress.
   mainWindow?.webContents.on('before-input-event', (event, input) => {
@@ -549,7 +586,8 @@ const registerBlockedShortcuts = (): void => {
     if (
       input.key === 'Escape' &&
       input.type === 'keyDown' &&
-      mainWindow?.isKiosk() &&
+      !!mainWindow &&
+      isExamLocked(mainWindow) &&
       !isConfirmShowing &&
       Date.now() > escCooldownUntil
     ) {
@@ -566,11 +604,9 @@ const registerBlockedShortcuts = (): void => {
         onConfirm: () => {
           // Actually confirmed leaving the exam (was in kiosk) → track exit.
           emitAppEvent('app_exam_exit', { via: 'esc' })
+          // Navigate home WHILE STAYING fullscreen — do not disarm kiosk, or macOS
+          // plays the Space-exit animation and flashes the desktop (B2B-2498).
           bypassUnload()
-          exitExamLock()
-          // Swallow any in-flight set-fullscreen(true) from the page being
-          // torn down so it can't re-arm kiosk right after the user exited.
-          suppressFullscreenRequests(1_000)
           mainWindow?.loadURL(EXAM_URL)
         }
       })
@@ -580,7 +616,7 @@ const registerBlockedShortcuts = (): void => {
   // Fullscreen/kiosk toggle — entering is instant, exiting requires confirm
   globalShortcut.register('F11', () => {
     if (!mainWindow) return
-    if (mainWindow.isKiosk()) {
+    if (isExamLocked(mainWindow)) {
       emitAppEvent('app_kiosk_exit_attempt', { via: 'f11' })
       showConfirm({
         icon: '',
@@ -600,20 +636,33 @@ const registerBlockedShortcuts = (): void => {
     }
   })
 
-  blockScreenshot('Super+Shift+S')
-  blockScreenshot('Super+PrintScreen')
+  if (!ALLOW_SCREENSHOT) {
+    blockScreenshot('Super+Shift+S')
+    blockScreenshot('Super+PrintScreen')
+  }
 
   if (app.isPackaged) {
-    globalShortcut.register('CommandOrControl+Shift+I', () => {})
-    globalShortcut.register('F12', () => {})
-    globalShortcut.register('CommandOrControl+Shift+J', () => {})
+    if (ALLOW_DEVTOOLS) {
+      // Debug build: let F12 / Cmd+Shift+I / Cmd+Shift+J toggle DevTools instead
+      // of swallowing them. Requires webPreferences.devTools to be true (above).
+      const toggleDevTools = (): void => mainWindow?.webContents.toggleDevTools()
+      globalShortcut.register('F12', toggleDevTools)
+      globalShortcut.register('CommandOrControl+Shift+I', toggleDevTools)
+      globalShortcut.register('CommandOrControl+Shift+J', toggleDevTools)
+    } else {
+      globalShortcut.register('CommandOrControl+Shift+I', () => {})
+      globalShortcut.register('F12', () => {})
+      globalShortcut.register('CommandOrControl+Shift+J', () => {})
+    }
   }
 }
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   stopProcessMonitor()
+  stopScreenRecordingGuard()
   stopBlocklistSync()
+  stopNetworkStatus()
   stopAppEvents()
   if (displayIntervalId) clearInterval(displayIntervalId)
 })

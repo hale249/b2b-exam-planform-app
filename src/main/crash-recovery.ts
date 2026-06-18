@@ -28,18 +28,18 @@ const page = (title: string, body: string, spinner: boolean): string =>
   )
 
 const RECOVERY_HTML = page(
-  'Đang khôi phục bài thi…',
-  'Vui lòng đợi trong giây lát và không tắt ứng dụng.',
+  'Recovering your exam…',
+  'Please wait a moment and do not close the app.',
   true
 )
 const FATAL_HTML = page(
-  'Không thể khôi phục',
-  'Đã thử lại nhiều lần nhưng chưa được. Vui lòng khởi động lại ứng dụng hoặc liên hệ giám thị.',
+  'Something went wrong',
+  'We tried several times but could not continue. Please restart the app, or ask your proctor for help.',
   false
 )
 const OFFLINE_HTML = page(
-  'Mất kết nối mạng',
-  'Không thể kết nối tới máy chủ bài thi. Ứng dụng sẽ tự thử lại khi có mạng — vui lòng kiểm tra Wi-Fi hoặc dây mạng.',
+  'No internet connection',
+  'We can’t reach the exam server. The app will reconnect automatically when you’re back online. Please check your Wi-Fi or network cable.',
   true
 )
 

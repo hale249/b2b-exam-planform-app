@@ -22,7 +22,7 @@ onMounted(() => {
         class="w-12 h-12 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"
       ></div>
       <h1 class="text-2xl mb-3 font-semibold text-gray-800">PrepEdu Exam Platform</h1>
-      <p class="text-gray-500 text-sm">Đang tải hệ thống thi...</p>
+      <p class="text-gray-500 text-sm">Loading your exam…</p>
     </div>
   </div>
 </template>

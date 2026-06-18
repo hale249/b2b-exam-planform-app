@@ -41,7 +41,7 @@ function injectStyles(): void {
       background: #ffffff;
       border-radius: 20px;
       padding: 32px 32px 28px;
-      max-width: 460px;
+      max-width: 560px;
       width: 92%;
       font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
       box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
@@ -225,13 +225,13 @@ function createOverlay(): HTMLDivElement {
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </div>
-        <h2 class="__blocked_title" id="__blocked_title">Security check required</h2>
+        <h2 class="__blocked_title" id="__blocked_title">Action needed to continue</h2>
         <p class="__blocked_subtitle" id="__blocked_subtitle"></p>
       </div>
       <div id="__blocked_issues"></div>
       <div class="__blocked_footer">
         <button id="__blocked_check_btn" class="__blocked_dismiss_btn" type="button">I understand</button>
-        <p class="__blocked_hint">This window updates automatically once everything is resolved.</p>
+        <p class="__blocked_hint">No need to worry — this window will close on its own once you’ve fixed everything above.</p>
       </div>
     </div>
   `
@@ -278,8 +278,8 @@ function renderOverlay(): void {
   const subtitle = overlay.querySelector('#__blocked_subtitle') as HTMLParagraphElement
   subtitle.textContent =
     issueCount === 1
-      ? 'Resolve the issue below to return to your exam.'
-      : `Resolve the ${issueCount} issues below to return to your exam.`
+      ? 'Please fix the issue below to return to your exam.'
+      : `Please fix the ${issueCount} issues below to return to your exam.`
 
   const issues = overlay.querySelector('#__blocked_issues') as HTMLDivElement
 
@@ -291,7 +291,7 @@ function renderOverlay(): void {
         <div class="__blocked_issue_icon --display">&#9783;</div>
         <div class="__blocked_issue_body">
           <p class="__blocked_issue_title --display">More than one screen detected</p>
-          <p class="__blocked_issue_desc">Only one screen is allowed during the exam. Disconnect any external monitors, then re-check.</p>
+          <p class="__blocked_issue_desc">Only one screen is allowed during the exam. Please disconnect any external monitor or projector.</p>
         </div>
       </div>
     `
@@ -304,7 +304,7 @@ function renderOverlay(): void {
         <div class="__blocked_issue_icon --software">&#9888;</div>
         <div class="__blocked_issue_body">
           <p class="__blocked_issue_title --software">${isPlural ? 'Prohibited apps are running' : 'A prohibited app is running'}</p>
-          <p class="__blocked_issue_desc">Fully close ${isPlural ? 'these apps' : 'this app'}, then re-check:</p>
+          <p class="__blocked_issue_desc">Please close ${isPlural ? 'them' : 'it'} completely. Right-click ${isPlural ? 'each icon' : 'the icon'} in the system tray (Windows) or menu bar (Mac) and choose <b>Quit</b> — closing the window is not enough:</p>
           <div class="__blocked_app_list">
             ${blockedProcesses.map((p) => `<span class="__blocked_app_tag">${p}</span>`).join('')}
           </div>
@@ -323,10 +323,10 @@ function renderOverlay(): void {
   if (multipleDisplays) {
     checkBtn.style.display = 'none'
     hint.textContent =
-      'Disconnect the external display to continue. This window closes automatically once only one screen remains.'
+      'Disconnect the external screen to continue. This window will close automatically once only one screen remains.'
   } else {
     checkBtn.style.display = ''
-    hint.textContent = 'This window updates automatically once everything is resolved.'
+    hint.textContent = 'No need to worry — this window will close on its own once you’ve fixed everything above.'
   }
 
   overlay.style.display = 'flex'

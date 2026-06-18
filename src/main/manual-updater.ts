@@ -5,6 +5,7 @@ import { autoUpdater } from 'electron-updater'
 
 import { IPC_CONSTANTS } from '../shared/ipc-channels'
 import { applyUpdateChannel } from './updater-channel'
+import { isExamLocked } from './exam-lock'
 
 // User-initiated ("manual") update flow shown ON the batch screen.
 //
@@ -22,10 +23,9 @@ import { applyUpdateChannel } from './updater-channel'
 //   updater:downloaded  { version }
 //   updater:error       { message }
 //
-// electron-updater only works in a packaged app. In dev we report "no update"
-// unless TEST_UPDATER=1 forces it to run against dev-app-update.yml.
+// electron-updater only works in a packaged app. In dev we report "no update".
 
-const updaterEnabled = (): boolean => app.isPackaged || process.env.TEST_UPDATER === '1'
+const updaterEnabled = (): boolean => app.isPackaged
 
 let bound = false
 let downloading = false
@@ -50,7 +50,6 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     autoUpdater.autoInstallOnAppQuit = false
     autoUpdater.logger = console
     applyUpdateChannel()
-    if (process.env.TEST_UPDATER === '1') autoUpdater.forceDevUpdateConfig = true
 
     autoUpdater.on('download-progress', (p) => {
       send(IPC_CONSTANTS.UPDATER_PROGRESS, {
@@ -125,8 +124,8 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
     // (window is in kiosk mode). A mid-exam restart would wipe the student's
     // session. The update stays downloaded and installs on the next launch.
     const win = getWindow()
-    if (win && !win.isDestroyed() && win.isKiosk()) {
-      console.warn('[ManualUpdater] install blocked — exam in progress (kiosk)')
+    if (win && isExamLocked(win)) {
+      console.warn('[ManualUpdater] install blocked — exam in progress (locked)')
       return
     }
     try {
@@ -145,7 +144,7 @@ export const registerManualUpdater = (getWindow: () => BrowserWindow | null): vo
   const checkAndNotify = async (): Promise<void> => {
     if (!updaterEnabled()) return
     const win = getWindow()
-    if (!win || win.isDestroyed() || win.isKiosk() || downloading) return
+    if (!win || win.isDestroyed() || isExamLocked(win) || downloading) return
     ensureBound()
     try {
       const result = await autoUpdater.checkForUpdates()
